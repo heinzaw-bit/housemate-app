@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#14513f" />
+    <title>HouseMate — Offline</title>
+    <style>
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; box-sizing: border-box; background: #f7f8f3; color: #20342c; font-family: 'Segoe UI', Arial, sans-serif; }
+      main { max-width: 390px; padding: 38px; border: 1px solid #e3e9df; border-radius: 20px; background: white; box-shadow: 0 20px 50px #213d2910; }
+      .icon { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 15px; background: #e6edcf; color: #14513f; font-size: 29px; }
+      h1 { margin: 23px 0 9px; font-size: 29px; letter-spacing: -.04em; }
+      p { color: #56665c; line-height: 1.6; font-size: 16px; }
+      button { margin-top: 15px; padding: 12px 18px; border: 0; border-radius: 10px; background: #14513f; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+      :focus-visible { outline: 3px solid #14513f; outline-offset: 4px; }
+      @media (max-width: 360px) { main { padding: 24px; } }
+    </style>
+  </head>
+  <body>
+    <main><div class="icon" aria-hidden="true">⌂</div><h1>You’re offline.</h1><p>No household data is stored on this offline screen. Reconnect to see current information.</p><p>Interrupted financial actions are not automatically retried. If another tab still has an unfinished review, return there and retry the same confirmation. Otherwise check the related records before creating another entry.</p><p id="connection" role="status">A connection is needed to continue.</p><button id="retry" onclick="location.reload()">Try again</button></main>
+    <script>
+      const connection = document.getElementById('connection');
+      function status() { connection.textContent = navigator.onLine ? 'Connection may be available. Try again to open HouseMate.' : 'A connection is needed to continue.'; }
+      window.addEventListener('online', status);
+      window.addEventListener('offline', status);
+      status();
+    </script>
+  </body>
+</html>
