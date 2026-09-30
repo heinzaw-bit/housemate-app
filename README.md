@@ -51,6 +51,14 @@ Owners and admins create invite links on Profile. Each link works once and expir
 
 ## Checks and scope
 
+Production supports Sentry browser/server reporting and route/global recovery.
+Configure `NEXT_PUBLIC_SENTRY_DSN` and server-only `SENTRY_DSN` to the web project
+DSN in Vercel production, then redeploy. Reports strip household/user data, tokens,
+request details, error text and breadcrumbs. Tracing/replay/log collection and
+source-map uploading are disabled. Never expose a private Sentry auth token.
+See the [API operations guide](https://github.com/heinzaw-bit/housemate-api/blob/main/OPERATIONS.md)
+for incident procedures. A missing DSN leaves reporting off.
+
 Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`. `.github/workflows/ci.yml` runs the same checks when this project is moved to its own repository.
 
 After building, run `npm run measure:bundle` to report JavaScript referenced by production HTML, including gzip bytes. This measures the signed-out/session-restoration shell, excluding deferred authenticated workspace code; it is not a phone runtime benchmark. DOM tests use Testing Library, user-event, jsdom, and axe-core for form structure and keyboard interaction. jsdom has no layout, so color contrast uses a separate palette calculation and zoom/layout/screen-reader behavior requires manual acceptance.
