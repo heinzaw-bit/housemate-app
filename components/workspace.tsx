@@ -216,6 +216,7 @@ export function Workspace({
                 key={`${me.id}:${household.id}`}
                 token={token}
                 householdId={household.id}
+                accountId={me.id}
               />
             ) : (
               <span
