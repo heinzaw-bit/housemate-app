@@ -2257,37 +2257,44 @@ a {
 }
 
 .dark {
-  --background: oklch(0.153 0.006 107.1);
-  --foreground: oklch(0.988 0.003 106.5);
-  --card: oklch(0.228 0.013 107.4);
-  --card-foreground: oklch(0.988 0.003 106.5);
-  --popover: oklch(0.228 0.013 107.4);
-  --popover-foreground: oklch(0.988 0.003 106.5);
-  --primary: oklch(0.93 0.007 106.5);
-  --primary-foreground: oklch(0.228 0.013 107.4);
-  --secondary: oklch(0.286 0.016 107.4);
-  --secondary-foreground: oklch(0.988 0.003 106.5);
-  --muted: oklch(0.286 0.016 107.4);
-  --muted-foreground: oklch(0.737 0.021 106.9);
-  --accent: oklch(0.286 0.016 107.4);
-  --accent-foreground: oklch(0.988 0.003 106.5);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.58 0.031 107.3);
+  color-scheme: dark;
+  --ink: #e6eee8;
+  --line: #35483d;
+  --green: #99d7b5;
+  --green-dark: #b5e6ca;
+  --cream: #101b16;
+  --white: #19271f;
+  --background: #101b16;
+  --foreground: #e6eee8;
+  --card: #19271f;
+  --card-foreground: #e6eee8;
+  --popover: #19271f;
+  --popover-foreground: #e6eee8;
+  --primary: #99d7b5;
+  --primary-foreground: #10251a;
+  --secondary: #263b2e;
+  --secondary-foreground: #dcebe0;
+  --muted: #263b2e;
+  --muted-foreground: #adbfaf;
+  --accent: #263b2e;
+  --accent-foreground: #b5e6ca;
+  --destructive: #ffaaa3;
+  --border: #35483d;
+  --input: #455b4d;
+  --ring: #99d7b5;
   --chart-1: oklch(0.88 0.011 106.6);
   --chart-2: oklch(0.58 0.031 107.3);
   --chart-3: oklch(0.466 0.025 107.3);
   --chart-4: oklch(0.394 0.023 107.4);
   --chart-5: oklch(0.286 0.016 107.4);
-  --sidebar: oklch(0.228 0.013 107.4);
-  --sidebar-foreground: oklch(0.988 0.003 106.5);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.988 0.003 106.5);
-  --sidebar-accent: oklch(0.286 0.016 107.4);
-  --sidebar-accent-foreground: oklch(0.988 0.003 106.5);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.58 0.031 107.3);
+  --sidebar: #19271f;
+  --sidebar-foreground: #e6eee8;
+  --sidebar-primary: #99d7b5;
+  --sidebar-primary-foreground: #10251a;
+  --sidebar-accent: #263b2e;
+  --sidebar-accent-foreground: #b5e6ca;
+  --sidebar-border: #35483d;
+  --sidebar-ring: #99d7b5;
 }
 
 @layer base {
@@ -2846,4 +2853,225 @@ input[type="radio"] {
     /* biome-ignore lint/complexity/noImportantStyles: User motion preferences override component scrolling. */
     scroll-behavior: auto !important;
   }
+}
+
+/* Header controls and legacy surfaces share the same theme as the UI components. */
+.header-icon-button,
+button.topbar-avatar {
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
+}
+.topbar-actions {
+  gap: 12px;
+}
+button.topbar-avatar {
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  font-weight: 700;
+}
+.topbar-avatar:hover {
+  background: var(--accent);
+}
+.account-menu-positioner {
+  z-index: 60;
+}
+.account-menu {
+  width: min(290px, calc(100vw - 32px));
+  max-height: var(--available-height);
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 20%);
+}
+.account-menu-identity {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px 14px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.account-menu-identity span,
+.account-menu-note {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.account-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.account-menu-item[data-highlighted] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.account-menu-item[data-disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.account-menu-note,
+.account-menu-error {
+  padding: 0 12px;
+  line-height: 1.5;
+}
+.account-menu-error {
+  color: var(--destructive);
+  font-size: 13px;
+}
+.auth-panel-top {
+  align-items: center;
+  gap: 12px;
+}
+.dark .topbar,
+.dark .auth-panel,
+.dark .google-button,
+.dark .secondary-button,
+.dark .field,
+.dark .input-wrap,
+.dark .choice-card,
+.dark .currency-option,
+.dark .household-picker,
+.dark .profile-header,
+.dark .error-card {
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+.dark .auth-page,
+.dark .full-loading,
+.dark .error-page,
+.dark .assistant-card {
+  background: var(--background);
+  border-color: var(--border);
+}
+.dark .auth-preview-link,
+.dark .currency-badge,
+.dark .house-tip,
+.dark .preview-banner,
+.dark .app-status,
+.dark .join-note,
+.dark .member-role,
+.dark .status-soft,
+.dark .soon-tag,
+.dark .auth-heading-icon,
+.dark .household-picker-icon,
+.dark .household-monogram,
+.dark .choice-icon,
+.dark .currency-symbol,
+.dark .card-icon,
+.dark .profile-status,
+.dark .empty-activity-mark,
+.dark .assistant-large-icon,
+.dark .assistant-examples span,
+.dark .brand-icon,
+.dark .member-avatar,
+.dark .house-hero,
+.dark .house-hero-icon {
+  background: var(--secondary);
+  border-color: var(--border);
+  color: var(--secondary-foreground);
+}
+.dark .sidebar-link:hover,
+.dark .google-button:hover:not(:disabled),
+.dark .secondary-button:hover:not(:disabled),
+.dark .auth-preview-link:hover,
+.dark .choice-card:hover,
+.dark .currency-option.selected {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  border-color: var(--ring);
+}
+.dark .sidebar-household-name,
+.dark .sidebar-link,
+.dark .topbar-location,
+.dark .page-heading-row h1,
+.dark .choice-copy strong,
+.dark .field-label,
+.dark .settings-form label,
+.dark .new-invite label,
+.dark .detail-row strong,
+.dark .house-hero h2,
+.dark .input-wrap input,
+.dark .currency-option strong,
+.dark .invite-list li strong,
+.dark .member-row strong,
+.dark .profile-detail-row strong,
+.dark .household-picker select {
+  color: var(--foreground);
+}
+.dark .topbar-slash,
+.dark .text-button,
+.dark .back-button,
+.dark .welcome-pill,
+.dark .section-note,
+.dark .detail-row span,
+.dark .profile-card p,
+.dark .house-hero p,
+.dark .card-caption,
+.dark .choice-copy small,
+.dark .onboard-footer,
+.dark .invite-list li span,
+.dark .profile-detail-row span,
+.dark .member-row small,
+.dark .currency-option small,
+.dark .overview-card p,
+.dark .overview-count,
+.dark .empty-activity p,
+.dark .tonight-card > p,
+.dark .house-tip p,
+.dark .house-tip-line,
+.dark .feature-mini p,
+.dark .house-module p,
+.dark .assistant-card p,
+.dark .error-card > p,
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: var(--muted-foreground);
+}
+.dark .eyebrow,
+.dark .inline-link,
+.dark .form-message.success,
+.dark .profile-status,
+.dark .member-you {
+  color: var(--primary);
+}
+.dark .form-message.error,
+.dark .error-icon {
+  color: var(--destructive);
+}
+.dark .primary-button,
+.dark .skip-link {
+  color: var(--primary-foreground);
+}
+.dark .primary-button:hover:not(:disabled) {
+  background: var(--green-dark);
+}
+.dark .sidebar-profile,
+.dark .detail-row,
+.dark .member-row,
+.dark .profile-details,
+.dark .member-list li,
+.dark .invite-list li,
+.dark .join-another,
+.dark .auth-divider::before,
+.dark .auth-divider::after,
+.dark .welcome-pill {
+  border-color: var(--border);
+}
+.dark .auth-divider::before,
+.dark .auth-divider::after,
+.dark .step-connector {
+  background: var(--border);
 }

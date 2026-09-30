@@ -92,9 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             checking: false,
             error: error
               ? describeAuthFailure(error, 'session')
-              : data.session
-                ? ''
-                : current.error,
+              : (redirectError?.message ?? (data.session ? '' : current.error)),
           }));
       })
       .catch((error: unknown) => {
@@ -120,7 +118,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           session,
           checking: false,
           configured: true,
-          error: session ? '' : current.error,
+          error:
+            event === 'INITIAL_SESSION' && redirectError
+              ? redirectError.message
+              : session
+                ? ''
+                : current.error,
         }));
     });
     return () => {

@@ -32,7 +32,9 @@ import {
   localPushDevice,
   refreshBrowserPush,
 } from '@/lib/web-push';
+import { AccountMenu } from './account-menu';
 import { Brand } from './brand';
+import { ThemeToggle } from './theme-toggle';
 import { WorkspaceLoading } from './workspace-loading';
 
 const HomeDashboard = dynamic(
@@ -97,6 +99,9 @@ export function Workspace({
   onSignOut,
   signingOut,
   signOutError,
+  onSwitchAccount,
+  switchingAccount = false,
+  accountError = '',
   preview = false,
 }: {
   section: Section;
@@ -112,6 +117,9 @@ export function Workspace({
   onSignOut: () => Promise<void> | void;
   signingOut: boolean;
   signOutError: string;
+  onSwitchAccount?: () => Promise<void>;
+  switchingAccount?: boolean;
+  accountError?: string;
   preview?: boolean;
 }) {
   const firstName = me.displayName.split(' ')[0] || 'there';
@@ -227,9 +235,16 @@ export function Workspace({
                 <Bell size={19} />
               </span>
             )}
-            <span className="topbar-avatar">
-              {firstName.charAt(0).toUpperCase()}
-            </span>
+            <ThemeToggle />
+            <AccountMenu
+              me={me}
+              profileHref={hrefFor('/profile')}
+              onSwitchAccount={onSwitchAccount}
+              onSignOut={onSignOut}
+              busy={signingOut || switchingAccount}
+              error={accountError || signOutError}
+              preview={preview}
+            />
           </div>
         </header>
 

@@ -36,6 +36,25 @@ Record device model, OS/browser version, date, viewport/text scaling, connection
 
 ## Accessibility and responsive layouts
 
+### Theme and account switching acceptance
+
+On both target phones and desktop, check light and dark modes in every section,
+forms, error states, notification popups and the profile menu. Toggle beside the
+profile icon, reload and navigate; the choice should persist. With no saved choice,
+check device theme changes. Check blocked storage, cross-tab changes, keyboard
+activation, text contrast and 320px/large-text layout.
+
+Open the profile menu, verify the current name/email and Profile link, then use
+Switch Google account with two test accounts belonging to different households.
+Google must offer account selection; after returning, only the new account's API
+data may appear. Verify cancel/error retains the previous session, open drafts
+block switching/sign-out, and a delayed previous-account read cannot overwrite
+the new view. Other tabs share the new session. Re-enable device push after
+switching if it was previously enabled. These actual-provider/device checks remain
+pending; automated tests simulate provider and API replies.
+
+### General acceptance
+
 1. Use Tab/Shift+Tab/Enter/Space without a mouse for sign-in, household switching, all navigation, Profile/invites, Notifications, money previews/confirmation/removal, and each House flow. Check the skip link, visible unobscured focus, logical order, named controls, selected filters, and focus after opening details/errors.
 2. Use VoiceOver on iPhone and TalkBack on Android; also use a desktop screen reader with keyboard controls. Check headings, labels, amounts/currency, selected responses, validation, live status, pagination, and draft/confirmed distinctions. No accessibility conformance is inferred from axe alone.
 3. At 200% browser zoom and a 320 CSS-pixel viewport, check forms, long names/titles, bill adjustments, previews, history rows, and mobile navigation. Content and controls must remain reachable without clipping. Check large phone text settings, landscape, and software keyboard visibility.

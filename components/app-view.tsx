@@ -3,6 +3,10 @@
 import { AlertCircle, ArrowRight, LoaderCircle, RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import {
+  AccountSwitchBlockedError,
+  switchGoogleAccount,
+} from '@/lib/account-switch';
+import {
   ApiRequestError,
   type ApiUser,
   getHousehold,
@@ -13,6 +17,7 @@ import {
 import { useAuth } from '@/lib/auth-context';
 import { describeAuthFailure } from '@/lib/auth-errors';
 import { pendingInviteKey } from '@/lib/invites';
+import { hasPendingWork } from '@/lib/pending-work';
 import { disableBrowserPush } from '@/lib/web-push';
 import { AuthScreen } from './auth-screen';
 import { Brand } from './brand';
@@ -26,6 +31,15 @@ interface LoadedData {
 }
 
 export function AppView({ section }: { section: Section }) {
+  const { session } = useAuth();
+  // Replace the entire view on account changes, including cross-tab sign-in.
+  // No previous account's data, errors or drafts survive until a new API read.
+  return (
+    <AccountView key={session?.user.id ?? 'signed-out'} section={section} />
+  );
+}
+
+function AccountView({ section }: { section: Section }) {
   const { client, session, checking, configured, error: authError } = useAuth();
   const [data, setData] = useState<LoadedData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -38,6 +52,8 @@ export function AppView({ section }: { section: Section }) {
   const [routeReady, setRouteReady] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState('');
+  const [switchingAccount, setSwitchingAccount] = useState(false);
+  const [accountError, setAccountError] = useState('');
   const token = session?.access_token;
 
   useEffect(() => {
@@ -137,11 +153,21 @@ export function AppView({ section }: { section: Section }) {
   }
 
   async function signOut() {
-    if (!client || signingOut) return;
+    if (!client || signingOut || switchingAccount) return;
+    if (hasPendingWork()) {
+      setSignOutError('Finish or discard your open draft before signing out.');
+      return;
+    }
     setSigningOut(true);
     setSignOutError('');
     try {
       await disableBrowserPush(token).catch(() => {});
+      if (hasPendingWork()) {
+        setSignOutError(
+          'Finish or discard your open draft before signing out.',
+        );
+        return;
+      }
       const { error: authError } = await client.auth.signOut({
         scope: 'local',
       });
@@ -149,6 +175,7 @@ export function AppView({ section }: { section: Section }) {
         setSignOutError(describeAuthFailure(authError, 'signout'));
       } else {
         window.localStorage.removeItem('housemate.selectedHousehold');
+        window.history.replaceState(null, '', window.location.pathname);
         setSelectedId(null);
       }
     } catch (failure) {
@@ -160,6 +187,40 @@ export function AppView({ section }: { section: Section }) {
       );
     } finally {
       setSigningOut(false);
+    }
+  }
+
+  async function switchAccount() {
+    if (!client || switchingAccount || signingOut) return;
+    setAccountError('');
+    if (!navigator.onLine) {
+      setAccountError('Reconnect to the internet before switching accounts.');
+      return;
+    }
+    setSwitchingAccount(true);
+    try {
+      await switchGoogleAccount({
+        client,
+        origin: window.location.origin,
+        canLeave: () => !hasPendingWork(),
+        disconnectPush: () => disableBrowserPush(token).catch(() => {}),
+        clearSelection: () => {
+          window.localStorage.removeItem('housemate.selectedHousehold');
+          window.localStorage.removeItem(pendingInviteKey);
+        },
+        navigate: (url) => window.location.assign(url),
+      });
+    } catch (failure) {
+      setAccountError(
+        failure instanceof AccountSwitchBlockedError
+          ? failure.message
+          : describeAuthFailure(
+              failure instanceof Error ? failure : null,
+              'google',
+            ),
+      );
+    } finally {
+      setSwitchingAccount(false);
     }
   }
 
@@ -289,6 +350,7 @@ export function AppView({ section }: { section: Section }) {
     data.households[0];
   return (
     <Workspace
+      key={data.me.id}
       section={section}
       me={data.me}
       households={data.households}
@@ -315,6 +377,13 @@ export function AppView({ section }: { section: Section }) {
       onSignOut={signOut}
       signingOut={signingOut}
       signOutError={signOutError}
+      onSwitchAccount={
+        process.env.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED === 'true'
+          ? switchAccount
+          : undefined
+      }
+      switchingAccount={switchingAccount}
+      accountError={accountError || authError}
     />
   );
 }

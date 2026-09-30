@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 import { AppStatus } from '@/components/app-status';
 import { ServiceWorkerRegister } from '@/components/service-worker-register';
 import { AuthProvider } from '@/lib/auth-context';
+import { themeInitScript } from '@/lib/theme';
+import { ThemeProvider } from '@/lib/theme-context';
 import './globals.css';
 import { Geist } from 'next/font/google';
 import { cn } from '@/lib/utils';
@@ -28,12 +30,24 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={cn('font-sans', geist.variable)}>
+    <html
+      lang="en"
+      className={cn('font-sans', geist.variable)}
+      suppressHydrationWarning
+    >
+      <head>
+        <script
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: Static theme bootstrap from application code only.
+          dangerouslySetInnerHTML={{ __html: themeInitScript }}
+        />
+      </head>
       <body>
-        <AuthProvider>
-          <AppStatus />
-          {children}
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <AppStatus />
+            {children}
+          </AuthProvider>
+        </ThemeProvider>
         <ServiceWorkerRegister />
       </body>
     </html>

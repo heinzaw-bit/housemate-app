@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { describeAuthFailure } from '@/lib/auth-errors';
 import { Brand } from './brand';
 import { InstallApp } from './install-app';
+import { ThemeToggle } from './theme-toggle';
 
 export function AuthScreen({
   client,
@@ -129,6 +130,7 @@ export function AuthScreen({
 
         <section className="auth-panel" aria-labelledby="sign-in-heading">
           <div className="auth-panel-top">
+            <ThemeToggle />
             <span className="welcome-pill">
               <span /> YOUR HOME STARTS HERE
             </span>

@@ -98,7 +98,7 @@ test('overlapping history pages remain unique even at large history sizes', () =
   expect(new Set(merged.map((row) => row.id)).size).toBe(1001);
 });
 
-test('primary, muted, error, and small-heading text colors meet normal-text contrast on their light surfaces', () => {
+test('light and dark text palettes meet normal-text contrast on their surfaces', () => {
   const css = readFileSync(
     new URL('../app/globals.css', import.meta.url),
     'utf8',
@@ -130,6 +130,25 @@ test('primary, muted, error, and small-heading text colors meet normal-text cont
   }
   expect(ratio(color('destructive'), '#f3ece9')).toBeGreaterThanOrEqual(4.5);
   expect(ratio(color('primary'), '#ffffff')).toBeGreaterThanOrEqual(3);
+  const darkCss = css.match(/\.dark \{([^}]+)\}/)?.[1] ?? '';
+  const darkColor = (name: string) =>
+    darkCss.match(new RegExp(`--${name}: (#[a-fA-F0-9]{6});`))?.[1] ?? '';
+  for (const foreground of [
+    'foreground',
+    'muted-foreground',
+    'primary',
+    'destructive',
+  ]) {
+    for (const background of ['background', 'card', 'popover', 'secondary']) {
+      expect(
+        ratio(darkColor(foreground), darkColor(background)),
+        `${foreground} on ${background}`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  }
+  expect(
+    ratio(darkColor('primary-foreground'), darkColor('primary')),
+  ).toBeGreaterThanOrEqual(4.5);
 });
 
 test('service worker caches only the public offline screen, waits for explicit updates, and never intercepts API writes', async () => {

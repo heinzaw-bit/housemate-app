@@ -51,6 +51,22 @@ Owners and admins create invite links on Profile. Each link works once and expir
 
 ## Checks and scope
 
+The header's sun/moon button beside the profile icon switches light/dark mode.
+The first visit follows the device preference; explicit choices are remembered
+in this browser and synchronized across tabs. The sign-in screen offers the
+same toggle. If storage is blocked, the current page can still change theme.
+
+Click the profile icon for Profile, the current account, Switch Google account,
+or Sign out. Switching uses Google's account chooser and returns to the app
+origin. It requires the existing Google provider configuration and
+`NEXT_PUBLIC_GOOGLE_AUTH_ENABLED=true`. Switching keeps the current Supabase
+session until Google succeeds; cancellation leaves that account signed in.
+Open drafts must be finished/discarded first. Device push registration and the
+previous household selection are cleared before navigation, and account changes
+replace the complete household view before fresh API reads. The app uses one
+active account per browser, shared across its tabs; it does not retain multiple
+account sessions. Actual two-Google-account/phone acceptance is a manual check.
+
 Production supports Sentry browser/server reporting and route/global recovery.
 Configure `NEXT_PUBLIC_SENTRY_DSN` and server-only `SENTRY_DSN` to the web project
 DSN in Vercel production, then redeploy. Reports strip household/user data, tokens,
