@@ -19,6 +19,7 @@ export function HouseholdMenu({
   onCreateHousehold,
   onJoinInvite,
   settingsHref,
+  onOpenSettings,
   busy = false,
   preview = false,
   mobile = false,
@@ -29,6 +30,7 @@ export function HouseholdMenu({
   onCreateHousehold?: () => void;
   onJoinInvite?: (token: string) => void;
   settingsHref: string;
+  onOpenSettings?: () => void;
   busy?: boolean;
   preview?: boolean;
   mobile?: boolean;
@@ -160,7 +162,10 @@ export function HouseholdMenu({
                   href={settingsHref}
                   onClick={(event) => {
                     if (busy || !canNavigate()) event.preventDefault();
-                    else setOpen(false);
+                    else {
+                      setOpen(false);
+                      onOpenSettings?.();
+                    }
                   }}
                 >
                   <Settings size={18} aria-hidden="true" />
@@ -246,7 +251,10 @@ export function HouseholdMenu({
                   closeOnClick={false}
                   onClick={(event) => {
                     if (busy || !canNavigate()) event.preventDefault();
-                    else setOpen(false);
+                    else {
+                      setOpen(false);
+                      onOpenSettings?.();
+                    }
                   }}
                 >
                   <Settings size={18} aria-hidden="true" />

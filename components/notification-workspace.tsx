@@ -40,6 +40,10 @@ export function NotificationWorkspace({
   accountId: string;
 }) {
   const [view, setView] = useState<'inbox' | 'settings'>('inbox');
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('view') === 'settings')
+      setView('settings');
+  }, []);
   const [scope, setScope] = useState<'all' | 'unread'>('all');
   const [records, setRecords] = useState<NotificationItem[]>([]);
   const [unread, setUnread] = useState(0);

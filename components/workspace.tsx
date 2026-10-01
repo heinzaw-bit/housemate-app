@@ -10,7 +10,6 @@ import {
   Clock3,
   Heart,
   LayoutDashboard,
-  LogOut,
   ReceiptText,
   ShoppingBasket,
   Sparkles,
@@ -21,9 +20,8 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import type { ApiUser, Household } from '@/lib/api';
 import {
@@ -127,6 +125,10 @@ export function Workspace({
   accountError?: string;
   preview?: boolean;
 }) {
+  const [profileSettingsRequest, setProfileSettingsRequest] = useState(0);
+  const openHouseholdSettings = () => {
+    if (section === 'profile') setProfileSettingsRequest((value) => value + 1);
+  };
   const firstName = me.displayName.split(' ')[0] || 'there';
   useEffect(() => {
     if (!token || preview) return;
@@ -169,6 +171,7 @@ export function Workspace({
             onCreateHousehold={onCreateHousehold}
             onJoinInvite={onJoinInvite}
             settingsHref={`${hrefFor('/profile')}#household-settings`}
+            onOpenSettings={openHouseholdSettings}
             busy={signingOut || switchingAccount}
             preview={preview}
           />
@@ -258,6 +261,7 @@ export function Workspace({
             onCreateHousehold={onCreateHousehold}
             onJoinInvite={onJoinInvite}
             settingsHref={`${hrefFor('/profile')}#household-settings`}
+            onOpenSettings={openHouseholdSettings}
             busy={signingOut || switchingAccount}
             preview={preview}
             mobile
@@ -316,31 +320,36 @@ export function Workspace({
             !preview &&
             token &&
             onMeUpdated &&
-            onHouseholdUpdated &&
-            onJoinInvite &&
-            onCreateHousehold && (
+            onHouseholdUpdated && (
               <MemberSettings
                 key={household.id}
+                settingsRequest={profileSettingsRequest}
                 me={me}
                 household={household}
                 token={token}
                 onMeUpdated={onMeUpdated}
                 onHouseholdUpdated={onHouseholdUpdated}
-                onJoinInvite={onJoinInvite}
-                onCreateHousehold={onCreateHousehold}
+                onSwitchAccount={onSwitchAccount}
+                switchingAccount={switchingAccount}
+                accountError={accountError}
                 onSignOut={onSignOut}
                 signingOut={signingOut}
                 signOutError={signOutError}
               />
             )}
           {section === 'profile' && (preview || !token) && (
-            <ProfileSection
+            <MemberSettings
+              key={household.id}
+              token=""
+              settingsRequest={profileSettingsRequest}
+              onMeUpdated={() => {}}
+              onHouseholdUpdated={() => {}}
               me={me}
               household={household}
               onSignOut={onSignOut}
               signingOut={signingOut}
               signOutError={signOutError}
-              preview={preview}
+              preview={preview || !token}
             />
           )}
         </main>
@@ -706,85 +715,6 @@ function AssistantSection() {
           <span>“Add eggs to shopping”</span>
           <span>“Plan a BBQ this Saturday”</span>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function ProfileSection({
-  me,
-  household,
-  onSignOut,
-  signingOut,
-  signOutError,
-  preview,
-}: {
-  me: ApiUser;
-  household: Household;
-  onSignOut: () => Promise<void> | void;
-  signingOut: boolean;
-  signOutError: string;
-  preview: boolean;
-}) {
-  return (
-    <div className="content-inner">
-      <div className="page-heading-row">
-        <div>
-          <span className="eyebrow">YOUR CORNER OF THE HOUSE</span>
-          <h1>
-            Your <em>profile.</em>
-          </h1>
-          <p>A quick look at your place in the household.</p>
-        </div>
-      </div>
-      <div className="profile-grid">
-        <Card className="profile-card">
-          <div className="profile-large-avatar">
-            {me.displayName.charAt(0).toUpperCase()}
-          </div>
-          <h2>{me.displayName}</h2>
-          <p>{me.email ?? 'HouseMate member'}</p>
-          <Badge variant="secondary" className="profile-status">
-            <span /> {preview ? 'Design preview' : 'Signed in'}
-          </Badge>
-        </Card>
-        <Card className="profile-detail-card">
-          <span className="eyebrow">HOUSEHOLD DETAILS</span>
-          <h2>{household.name}</h2>
-          <div className="detail-row">
-            <span>Your role</span>
-            <strong>
-              {household.role.charAt(0).toUpperCase() + household.role.slice(1)}
-            </strong>
-          </div>
-          <div className="detail-row">
-            <span>Currency</span>
-            <strong>{household.defaultCurrency}</strong>
-          </div>
-          <div className="detail-row">
-            <span>Timezone</span>
-            <strong>{household.timezone}</strong>
-          </div>
-          <Button
-            variant="outline"
-            className="secondary-button sign-out-button"
-            type="button"
-            onClick={onSignOut}
-            disabled={signingOut}
-          >
-            <LogOut size={17} />{' '}
-            {preview
-              ? 'Exit preview'
-              : signingOut
-                ? 'Signing out…'
-                : 'Sign out'}
-          </Button>
-          {signOutError && (
-            <p className="form-message error" role="alert">
-              {signOutError}
-            </p>
-          )}
-        </Card>
       </div>
     </div>
   );

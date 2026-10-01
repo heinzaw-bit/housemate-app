@@ -1,0 +1,361 @@
+.page {
+  max-width: 960px;
+}
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 26px;
+}
+.identity > div {
+  min-width: 0;
+}
+.identity strong {
+  font-size: 19px;
+  overflow-wrap: anywhere;
+}
+.identity p {
+  margin: 3px 0 0;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+  background: #eac19a;
+  color: #61401e;
+  font-size: 24px;
+  font-weight: 800;
+}
+.tabs {
+  display: flex;
+  gap: 5px;
+  padding: 5px;
+  margin-bottom: 22px;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+.tab {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px;
+  border: 0;
+  border-radius: 11px;
+  color: var(--muted-foreground);
+  background: transparent;
+  font-weight: 700;
+  font-size: 14px;
+}
+.tab[data-active] {
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+.tab:hover:not([data-active]) {
+  color: var(--foreground);
+  background: var(--accent);
+}
+.panel {
+  display: grid;
+  gap: 18px;
+}
+.panel[hidden] {
+  display: none;
+}
+.card {
+  display: block;
+  padding: 26px;
+  border-radius: 22px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  box-shadow: none;
+  min-width: 0;
+}
+.cardHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.cardHeading > div {
+  min-width: 0;
+}
+.card h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 19px;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+.card h2 svg {
+  flex-shrink: 0;
+}
+.cardHeading p,
+.preferenceRow p {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  margin: 6px 0 0;
+  line-height: 1.6;
+}
+.card button {
+  min-height: 44px;
+  min-width: 44px;
+}
+.cardHeading > button {
+  flex-shrink: 0;
+}
+.details {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+.details > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.details > div:last-child {
+  border-bottom: 0;
+}
+.details dt {
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+.details dd {
+  margin: 0;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+.accountDetails {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.accountDetails summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 650;
+  list-style: none;
+}
+.accountDetails summary::-webkit-details-marker {
+  display: none;
+}
+.accountDetails[open] summary svg {
+  transform: rotate(180deg);
+}
+.accountDetails p {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.memberList,
+.invites {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.memberRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.memberRow:last-child {
+  border-bottom: 0;
+}
+.memberRow > strong {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.memberAvatar {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: var(--secondary);
+  color: var(--primary);
+  font-weight: 750;
+}
+.roleSelect {
+  min-height: 44px;
+  max-width: 110px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--foreground);
+  background: var(--background);
+  font-size: 14px;
+}
+.roleReview {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--secondary);
+}
+.roleReview h3 {
+  margin: 0;
+  font-weight: 700;
+}
+.roleReview p {
+  margin: 8px 0;
+  font-size: 14px;
+}
+.newInvite {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  margin-bottom: 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--secondary);
+}
+.newInvite label {
+  font-size: 14px;
+  font-weight: 650;
+}
+.newInvite button {
+  justify-self: start;
+}
+.listTitle {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 16px 0 8px;
+}
+.invites li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.invites li:last-child {
+  border-bottom: 0;
+}
+.invites li > div {
+  display: grid;
+  gap: 4px;
+}
+.invites li span {
+  color: var(--muted-foreground);
+}
+.invites[hidden] {
+  display: none;
+}
+.footerNote {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+}
+.preferenceRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border);
+}
+.preferenceRow:first-child {
+  padding-top: 0;
+}
+.preferenceRow:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.preferenceRow > div {
+  min-width: 0;
+}
+.settingsLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 750;
+  min-height: 44px;
+}
+.install {
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 6px 26px;
+  background: var(--card);
+}
+.install > section {
+  margin: 0;
+  border: 0;
+  padding: 20px 0;
+  background: transparent;
+}
+@media (max-width: 600px) {
+  .card {
+    padding: 20px;
+    border-radius: 18px;
+  }
+  .tabs {
+    gap: 2px;
+    padding: 4px;
+  }
+  .tab {
+    padding: 8px 4px;
+    font-size: 12px;
+  }
+  .cardHeading {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .card h2 {
+    font-size: 18px;
+  }
+  .preferenceRow {
+    gap: 12px;
+  }
+  .install {
+    padding: 4px 20px;
+    border-radius: 18px;
+  }
+  .details > div {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab,
+  .panel {
+    transition: none;
+    animation: none;
+  }
+}
