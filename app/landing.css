@@ -36,6 +36,7 @@
 }
 .landing-panel:focus-within {
   opacity: 1;
+  transition: none;
 }
 .landing-panel h1,
 .landing-panel h2 {
