@@ -455,7 +455,9 @@ export function AssistantWorkspace({
         </form>
         <p className={styles.srOnly} role="status">
           {status ||
-            (enabled === null && !error ? 'Checking assistant availability…' : '')}
+            (enabled === null && !error
+              ? 'Checking assistant availability…'
+              : '')}
         </p>
         {error && (
           <p className={styles.error} role="alert">
