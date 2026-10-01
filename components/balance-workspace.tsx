@@ -94,8 +94,10 @@ export function BalanceWorkspace({
   const [hasMoreEntries, setHasMoreEntries] = useState(false);
   const [entriesExpanded, setEntriesExpanded] = useState(false);
   const [transfersExpanded, setTransfersExpanded] = useState(false);
+  const [suggestionsExpanded, setSuggestionsExpanded] = useState(false);
   const entriesId = useId();
   const transfersId = useId();
+  const suggestionsId = useId();
   const [loading, setLoading] = useState(true);
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [moreBusy, setMoreBusy] = useState<'entries' | 'settlements' | null>(
@@ -607,53 +609,78 @@ export function BalanceWorkspace({
               </Card>
               <Card>
                 <CardHeader>
-                  <CardTitle>Suggested transfers</CardTitle>
+                  <div className="flex items-start justify-between gap-3">
+                    <CardTitle>Suggested transfers</CardTitle>
+                    {summary.suggestions.length > 2 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={
+                          suggestionsExpanded
+                            ? 'Show fewer suggested transfers'
+                            : 'Show more suggested transfers'
+                        }
+                        aria-expanded={suggestionsExpanded}
+                        aria-controls={suggestionsId}
+                        onClick={() => setSuggestionsExpanded((old) => !old)}
+                      >
+                        {suggestionsExpanded ? 'Show less' : 'Show more'}
+                        <ChevronDown
+                          size={16}
+                          aria-hidden="true"
+                          className={suggestionsExpanded ? 'rotate-180' : ''}
+                        />
+                      </Button>
+                    )}
+                  </div>
                   <p className="text-sm text-muted-foreground">
                     These are suggestions based on current balances. No transfer
                     happens until someone pays outside HouseMate and records it
                     here.
                   </p>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent id={suggestionsId} className="space-y-3">
                   {summary.suggestions.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
                       No transfer suggested right now.
                     </p>
                   ) : (
-                    summary.suggestions.map((suggestion) => (
-                      <div
-                        key={`${suggestion.senderMemberId}-${suggestion.recipientMemberId}`}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 text-sm"
-                      >
-                        <div>
-                          <span className="font-medium">
-                            {suggestion.senderDisplayName}
-                          </span>{' '}
-                          <ArrowRight size={14} className="inline" />{' '}
-                          <span className="font-medium">
-                            {suggestion.recipientDisplayName}
-                          </span>
-                          <strong className="block text-primary">
-                            {amountText(
-                              suggestion.amountMinor,
-                              summary.currency,
-                            )}
-                          </strong>
+                    summary.suggestions
+                      .slice(0, suggestionsExpanded ? undefined : 2)
+                      .map((suggestion) => (
+                        <div
+                          key={`${suggestion.senderMemberId}-${suggestion.recipientMemberId}`}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 text-sm"
+                        >
+                          <div>
+                            <span className="font-medium">
+                              {suggestion.senderDisplayName}
+                            </span>{' '}
+                            <ArrowRight size={14} className="inline" />{' '}
+                            <span className="font-medium">
+                              {suggestion.recipientDisplayName}
+                            </span>
+                            <strong className="block text-primary">
+                              {amountText(
+                                suggestion.amountMinor,
+                                summary.currency,
+                              )}
+                            </strong>
+                          </div>
+                          {(summary.viewerMemberId ===
+                            suggestion.senderMemberId ||
+                            summary.viewerMemberId ===
+                              suggestion.recipientMemberId) && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => prefillSuggestion(suggestion)}
+                            >
+                              Record after paying
+                            </Button>
+                          )}
                         </div>
-                        {(summary.viewerMemberId ===
-                          suggestion.senderMemberId ||
-                          summary.viewerMemberId ===
-                            suggestion.recipientMemberId) && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => prefillSuggestion(suggestion)}
-                          >
-                            Record after paying
-                          </Button>
-                        )}
-                      </div>
-                    ))
+                      ))
                   )}
                 </CardContent>
               </Card>

@@ -12,7 +12,13 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import {
   ApiRequestError,
   type Dashboard,
@@ -169,7 +175,7 @@ export function HomeDashboard({
               </p>
             </div>
             <div className="grid gap-4 lg:grid-cols-3">
-              <Card className="border-amber-300/60 bg-amber-50/40 dark:bg-amber-950/20 lg:col-span-2 lg:row-span-2">
+              <Card className="gap-3 border-amber-300/60 bg-amber-50/40 dark:bg-amber-950/20">
                 <CardHeader className="space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <CardTitle className="flex items-center gap-2">
@@ -191,7 +197,7 @@ export function HomeDashboard({
                     {data.dueSoonDays} days
                   </p>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex-1">
                   {data.pendingBills.items.length ? (
                     <ul className="divide-y">
                       {data.pendingBills.items.slice(0, 3).map((bill) => (
@@ -236,13 +242,15 @@ export function HomeDashboard({
                       No unpaid bills. You’re up to date.
                     </p>
                   )}
+                </CardContent>
+                <CardFooter>
                   <Link
-                    className="inline-link mt-4"
+                    className="inline-link"
                     href={moneyHref(household.id, 'bills')}
                   >
                     View all bills <ArrowUpRight size={16} aria-hidden="true" />
                   </Link>
-                </CardContent>
+                </CardFooter>
               </Card>
               <Card className="gap-3 bg-primary/5">
                 <CardHeader>
@@ -250,7 +258,7 @@ export function HomeDashboard({
                     <ClipboardList size={19} aria-hidden="true" /> Next chore
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3 text-sm">
+                <CardContent className="flex-1 space-y-3 text-sm">
                   {data.chores.nextDue ? (
                     <>
                       <p className="font-medium">{data.chores.nextDue.title}</p>
@@ -267,13 +275,15 @@ export function HomeDashboard({
                       {data.chores.overdueCount} overdue
                     </Badge>
                   )}
+                </CardContent>
+                <CardFooter>
                   <Link
                     className="inline-link"
                     href={`/house?household=${encodeURIComponent(household.id)}&chores=1`}
                   >
                     Open chores <ArrowUpRight size={16} aria-hidden="true" />
                   </Link>
-                </CardContent>
+                </CardFooter>
               </Card>
               <Card className="gap-3">
                 <CardHeader>
@@ -281,7 +291,7 @@ export function HomeDashboard({
                     <UtensilsCrossed size={19} aria-hidden="true" /> Next meal
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3 text-sm">
+                <CardContent className="flex-1 space-y-3 text-sm">
                   {data.nextMeal ? (
                     <>
                       <p className="font-medium">{data.nextMeal.question}</p>
@@ -289,29 +299,26 @@ export function HomeDashboard({
                         {time(data.nextMeal.startsAt)} ·{' '}
                         {data.nextMeal.awaitingCount} awaiting responses
                       </p>
-                      <Link
-                        className="inline-link"
-                        href={`/house?household=${encodeURIComponent(household.id)}&meal=${encodeURIComponent(data.nextMeal.id)}`}
-                      >
-                        Open meal check{' '}
-                        <ArrowUpRight size={16} aria-hidden="true" />
-                      </Link>
                     </>
                   ) : (
-                    <>
-                      <p className="text-muted-foreground">
-                        No upcoming meal check.
-                      </p>
-                      <Link
-                        className="inline-link"
-                        href={`/house?household=${encodeURIComponent(household.id)}`}
-                      >
-                        Plan a meal{' '}
-                        <ArrowUpRight size={16} aria-hidden="true" />
-                      </Link>
-                    </>
+                    <p className="text-muted-foreground">
+                      No upcoming meal check.
+                    </p>
                   )}
                 </CardContent>
+                <CardFooter>
+                  <Link
+                    className="inline-link"
+                    href={
+                      data.nextMeal
+                        ? `/house?household=${encodeURIComponent(household.id)}&meal=${encodeURIComponent(data.nextMeal.id)}`
+                        : `/house?household=${encodeURIComponent(household.id)}`
+                    }
+                  >
+                    {data.nextMeal ? 'Open meal check' : 'Plan a meal'}{' '}
+                    <ArrowUpRight size={16} aria-hidden="true" />
+                  </Link>
+                </CardFooter>
               </Card>
             </div>
           </section>

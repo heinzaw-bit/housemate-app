@@ -193,12 +193,6 @@ export function Workspace({
             <strong>Better together.</strong>
             <p>A little more organized, a lot more at home.</p>
           </div>
-          <div className="sidebar-profile">
-            <span className="avatar">{firstName.charAt(0).toUpperCase()}</span>
-            <span>
-              <strong>{me.displayName}</strong>
-            </span>
-          </div>
         </div>
       </aside>
 

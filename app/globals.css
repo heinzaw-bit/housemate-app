@@ -914,14 +914,6 @@ a {
   font-size: 10px;
   line-height: 1.5;
 }
-.sidebar-profile {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 15px 4px 0;
-  border-top: 1px solid #eef0ec;
-  min-width: 0;
-}
 .avatar,
 .topbar-avatar {
   display: grid;
@@ -936,24 +928,6 @@ a {
   width: 34px;
   height: 34px;
   font-size: 13px;
-}
-.sidebar-profile > span:last-child {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-.sidebar-profile strong {
-  font-size: 11px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.sidebar-profile small {
-  font-size: 9px;
-  color: #9ca79d;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 .main-area {
   min-width: 0;
@@ -2740,7 +2714,6 @@ input[type="radio"] {
 .household-picker label > span,
 .sidebar-nav > p,
 .sidebar-note p,
-.sidebar-profile small,
 .sidebar-household-label {
   color: var(--muted-foreground);
 }
@@ -3062,7 +3035,6 @@ button.topbar-avatar {
 .dark .primary-button:hover:not(:disabled) {
   background: var(--green-dark);
 }
-.dark .sidebar-profile,
 .dark .detail-row,
 .dark .member-row,
 .dark .profile-details,
