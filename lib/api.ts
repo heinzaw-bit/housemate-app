@@ -1,5 +1,49 @@
 export type Currency = 'USD' | 'THB';
 
+export type AssistantTopic =
+  | 'summary'
+  | 'balance'
+  | 'bills'
+  | 'meals'
+  | 'chores'
+  | 'shopping'
+  | 'events';
+export interface AssistantAnswer {
+  kind: 'answer' | 'clarification';
+  topic: AssistantTopic | 'unsupported';
+  text: string;
+  generatedAt: string;
+  timezone: string;
+  rows: { label: string; detail: string; href: string }[];
+  sources: { label: string; href: string }[];
+  partial: boolean;
+}
+export function getAssistantConfig(
+  token: string,
+  householdId: string,
+  signal?: AbortSignal,
+) {
+  return request<{ naturalLanguageEnabled: boolean }>(
+    `/v1/households/${encodeURIComponent(householdId)}/assistant`,
+    token,
+    { signal },
+  );
+}
+export function askAssistant(
+  token: string,
+  householdId: string,
+  question:
+    | { topic: AssistantTopic; message?: never }
+    | { message: string; topic?: never },
+  signal?: AbortSignal,
+) {
+  return request<AssistantAnswer>(
+    `/v1/households/${encodeURIComponent(householdId)}/assistant/questions`,
+    token,
+    { method: 'POST', body: JSON.stringify(question), signal },
+  );
+}
+
 export const notificationCategories = [
   'money',
   'bills',

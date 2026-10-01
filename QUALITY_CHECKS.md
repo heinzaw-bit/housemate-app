@@ -2,7 +2,13 @@
 
 Target platforms: **Android Chrome and iPhone Safari**, selected by the user. Implementation and automated checks are complete; the actual-device and signed-in rendered checks below remain pending as of 2026-09-30.
 
-## Automated verification
+## Assistant acceptance (phase 1)
+
+On both target browsers, sign in and open Assistant. Check all seven quick questions, source links preserving household selection, checked timestamps, empty lists, and list-limit notices. Change households/accounts while a question is pending; no old answer should appear. Verify keyboard focus, narrow layouts, dark mode, cancellation, and protection of unsent questions during app updates.
+
+Free text requires the API's private OpenAI configuration and migration 016. Check a personal balance against Money, an exact named member, duplicate names, cooking today across a UTC/household date boundary, and an unsupported write or per-member bill-payment question. Simulate provider failure and a limit response; input must remain and quick questions must still work, with no automatic retries or household writes. Live provider and phone acceptance remain pending until setup/devices are available.
+
+## Automated verification commands
 
 Run from this independent `app/` package:
 

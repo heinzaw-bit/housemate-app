@@ -41,6 +41,11 @@ const HomeDashboard = dynamic(
   () => import('./home-dashboard').then((module) => module.HomeDashboard),
   { loading: WorkspaceLoading },
 );
+const AssistantWorkspace = dynamic(
+  () =>
+    import('./assistant-workspace').then((module) => module.AssistantWorkspace),
+  { loading: WorkspaceLoading },
+);
 const HouseWorkspace = dynamic(
   () => import('./house-workspace').then((module) => module.HouseWorkspace),
   { loading: WorkspaceLoading },
@@ -289,7 +294,16 @@ export function Workspace({
                 token={token}
               />
             ))}
-          {section === 'assistant' && <AssistantSection />}
+          {section === 'assistant' &&
+            (preview || !token ? (
+              <AssistantSection />
+            ) : (
+              <AssistantWorkspace
+                key={household.id}
+                household={household}
+                token={token}
+              />
+            ))}
           {section === 'profile' &&
             !preview &&
             token &&
