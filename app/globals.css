@@ -3051,3 +3051,17 @@ button.topbar-avatar {
 .dark .step-connector {
   background: var(--border);
 }
+
+/* The household control belongs to global navigation, never the Home heading. */
+.sidebar-household-control {
+  margin: 0 4px 28px;
+}
+.mobile-household-control {
+  display: none;
+}
+@media (max-width: 900px) {
+  .mobile-household-control {
+    display: block;
+    padding: 12px clamp(20px, 4vw, 58px) 0;
+  }
+}

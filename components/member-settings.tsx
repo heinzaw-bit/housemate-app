@@ -310,7 +310,7 @@ export function MemberSettings({
           )}
         </Card>
 
-        <Card className="settings-card">
+        <Card className="settings-card" id="household-settings">
           <span className="eyebrow">HOUSEHOLD SETTINGS</span>
           <h2>{household.name}</h2>
           <Badge variant="secondary" className="role-badge">

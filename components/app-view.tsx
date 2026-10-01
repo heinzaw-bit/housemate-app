@@ -122,6 +122,18 @@ function AccountView({ section }: { section: Section }) {
     window.localStorage.setItem('housemate.selectedHousehold', id);
     const url = new URL(window.location.href);
     url.searchParams.set('household', id);
+    // Entity links and create/event-prefill parameters belong to the old household.
+    for (const key of [
+      'record',
+      'event',
+      'meal',
+      'chore',
+      'item',
+      'announcement',
+      'poll',
+      'add',
+    ])
+      url.searchParams.delete(key);
     window.history.replaceState(
       null,
       '',
@@ -336,7 +348,17 @@ function AccountView({ section }: { section: Section }) {
         onJoinInvite={startJoin}
         onCreated={(household) => {
           setData((current) =>
-            current ? { ...current, households: [household] } : current,
+            current
+              ? {
+                  ...current,
+                  households: [
+                    ...current.households.filter(
+                      (item) => item.id !== household.id,
+                    ),
+                    household,
+                  ],
+                }
+              : current,
           );
           selectHousehold(household.id);
           setCreatingAnother(false);

@@ -6,7 +6,6 @@ import {
   Bell,
   CalendarDays,
   CheckCircle2,
-  ChevronDown,
   ClipboardList,
   Clock3,
   Heart,
@@ -34,6 +33,7 @@ import {
 } from '@/lib/web-push';
 import { AccountMenu } from './account-menu';
 import { Brand } from './brand';
+import { HouseholdMenu } from './household-menu';
 import { ThemeToggle } from './theme-toggle';
 import { WorkspaceLoading } from './workspace-loading';
 
@@ -160,15 +160,18 @@ export function Workspace({
         <div className="sidebar-top">
           <Brand />
         </div>
-        <div className="sidebar-household">
-          <span className="sidebar-household-label">YOUR HOUSEHOLD</span>
-          <span className="sidebar-household-name">
-            <span className="household-monogram">
-              {household.name.charAt(0).toUpperCase()}
-            </span>
-            <span className="truncate">{household.name}</span>
-            <ChevronDown size={15} />
-          </span>
+        <div className="sidebar-household-control">
+          <HouseholdMenu
+            key={household.id}
+            household={household}
+            households={households}
+            onSelectHousehold={onSelectHousehold}
+            onCreateHousehold={onCreateHousehold}
+            onJoinInvite={onJoinInvite}
+            settingsHref={`${hrefFor('/profile')}#household-settings`}
+            busy={signingOut || switchingAccount}
+            preview={preview}
+          />
         </div>
         <nav className="sidebar-nav" aria-label="Main navigation">
           <p>WORKSPACE</p>
@@ -246,6 +249,20 @@ export function Workspace({
           </div>
         </header>
 
+        <div className="mobile-household-control">
+          <HouseholdMenu
+            key={household.id}
+            household={household}
+            households={households}
+            onSelectHousehold={onSelectHousehold}
+            onCreateHousehold={onCreateHousehold}
+            onJoinInvite={onJoinInvite}
+            settingsHref={`${hrefFor('/profile')}#household-settings`}
+            busy={signingOut || switchingAccount}
+            preview={preview}
+            mobile
+          />
+        </div>
         <main id="workspace-content" tabIndex={-1} className="page-content">
           {section === 'notifications' && token && !preview && (
             <NotificationWorkspace
@@ -261,8 +278,6 @@ export function Workspace({
               token={preview ? undefined : token}
               firstName={firstName}
               household={household}
-              households={households}
-              onSelectHousehold={onSelectHousehold}
               moneyHref={hrefFor('/money')}
               houseHref={hrefFor('/house')}
             />
@@ -348,53 +363,16 @@ export function Workspace({
   );
 }
 
-function HouseholdPicker({
-  household,
-  households,
-  onSelectHousehold,
-}: {
-  household: Household;
-  households: Household[];
-  onSelectHousehold: (id: string) => void;
-}) {
-  return (
-    <div className="household-picker">
-      <span className="household-picker-icon">
-        {household.name.charAt(0).toUpperCase()}
-      </span>
-      <label>
-        <span>YOUR HOUSEHOLD</span>
-        <select
-          aria-label="Select household"
-          value={household.id}
-          onChange={(event) => onSelectHousehold(event.target.value)}
-        >
-          {households.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <ChevronDown size={17} aria-hidden="true" />
-    </div>
-  );
-}
-
 function HomeSection({
   token,
   firstName,
   household,
-  households,
-  onSelectHousehold,
   moneyHref,
   houseHref,
 }: {
   token?: string;
   firstName: string;
   household: Household;
-  households: Household[];
-  onSelectHousehold: (id: string) => void;
   moneyHref: string;
   houseHref: string;
 }) {
@@ -408,11 +386,6 @@ function HomeSection({
           </h1>
           <p>Here&apos;s what&apos;s happening at home.</p>
         </div>
-        <HouseholdPicker
-          household={household}
-          households={households}
-          onSelectHousehold={onSelectHousehold}
-        />
       </div>
 
       {token ? (

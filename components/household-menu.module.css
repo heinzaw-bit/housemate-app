@@ -1,0 +1,238 @@
+.trigger {
+  width: 100%;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 16px;
+  background: var(--sidebar-accent);
+  color: var(--sidebar-foreground);
+  text-align: left;
+  cursor: pointer;
+}
+.trigger:hover,
+.trigger[data-popup-open] {
+  background: var(--secondary);
+}
+.trigger:focus-visible,
+.item:focus-visible,
+.close:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+.trigger:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+.monogram {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--background);
+  color: var(--primary);
+  font-weight: 800;
+}
+.identity {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+.label {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  color: var(--muted-foreground);
+}
+.identity strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.chevron {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  transition: transform 150ms;
+}
+.trigger[data-popup-open] .chevron {
+  transform: rotate(180deg);
+}
+.positioner {
+  z-index: 60;
+}
+.surface {
+  color: var(--foreground);
+  background: var(--popover);
+  border: 1px solid var(--border);
+  box-shadow: 0 16px 45px #0003;
+}
+.menu {
+  width: 280px;
+  max-width: calc(100vw - 24px);
+  max-height: var(--available-height);
+  overflow-y: auto;
+  border-radius: 18px;
+  padding: 8px;
+}
+.menuTitle {
+  margin: 8px 10px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 700;
+}
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.itemName {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.item:hover,
+.item[data-highlighted] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.item[aria-checked="true"],
+.item[aria-pressed="true"] {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  font-weight: 700;
+}
+.item:disabled,
+.item[data-disabled] {
+  color: var(--muted-foreground);
+  opacity: 0.6;
+  cursor: default;
+}
+.separator {
+  height: 1px;
+  margin: 8px 2px;
+  background: var(--border);
+}
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: #0006;
+}
+.sheet,
+.join {
+  position: fixed;
+  z-index: 71;
+  padding: 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  max-height: calc(100dvh - 32px);
+}
+.sheet {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  border-radius: 24px 24px 0 0;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+.join {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 32px));
+  border-radius: 22px;
+}
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.heading h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.close {
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+}
+.close:hover {
+  background: var(--accent);
+}
+.description {
+  margin: 8px 10px 12px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.list {
+  margin-top: 14px;
+}
+.actions {
+  border-top: 1px solid var(--border);
+  margin-top: 12px;
+  padding-top: 8px;
+}
+.error {
+  margin: 10px;
+  color: var(--destructive);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.joinForm {
+  display: grid;
+  gap: 12px;
+}
+.joinForm label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.formActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+}
+@media (max-width: 900px) {
+  .trigger {
+    min-height: 56px;
+    padding: 8px 12px;
+  }
+  .join {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    transform: none;
+    border-radius: 24px 24px 0 0;
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
+}

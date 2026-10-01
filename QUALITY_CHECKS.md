@@ -16,6 +16,12 @@ Try “Plan dinner tomorrow at 7pm” without Gemini consent, including when pro
 
 Interrupt the confirmation response. The result stays Not yet confirmed; editing/cancelling that attempt is locked and manual retry uses the exact original payload/key. Verify one actual record/notification only. Simulate definitive validation errors to correct fields, lost membership to clear private drafts, and household/account changes during preparation/publication to ignore old private responses. Open drafts must block app-update/account-switch reloads. Check keyboard labels/focus after review/cancel, dark mode and phone layouts. Automated tests use mocks and do not establish real publication/notification delivery; signed-in rendered and phone checks remain pending.
 
+## Household menu acceptance (rendered phone checks pending)
+
+Home must have no household picker beside its heading. Desktop: click anywhere on the sidebar household card, or use Enter/Space; verify current household check, Arrow-key navigation, Escape/dismissal and focus return. Switch to another accessible household from each main tab and verify selected-household links/content update with no retained private records. Create another household and verify the old memberships stay available. Paste a valid invitation link/code to open the normal invitation review; opening the form or checking invalid input must not accept membership. Open settings and verify the selected household anchor and normal role restrictions.
+
+An unfinished expense, bill, Assistant draft or settings change must block switching, create/join and settings navigation with a clear message, preserving the draft. On Android Chrome/iPhone Safari, verify the shared global header control opens a modal bottom sheet, traps/restores focus, has a usable close action, fits long household names and many memberships, respects keyboard/safe areas and light/dark themes. Pending invitation input must protect update/reload; cancelling may discard that input. Automated tests cover menu/sheet semantics, draft guards and invitation routing; jsdom does not establish rendered layout.
+
 ## Automated verification commands
 
 Run from this independent `app/` package:
