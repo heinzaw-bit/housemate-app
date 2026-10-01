@@ -150,3 +150,28 @@
     border-radius: 16px;
   }
 }
+
+.consent {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  margin: 12px 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.consent input {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  accent-color: var(--primary);
+}
+.consent input:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+.muted a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

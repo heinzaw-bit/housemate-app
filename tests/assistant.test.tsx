@@ -70,6 +70,12 @@ test('typed questions guard unsent work, expose limits, and clear only after suc
   await waitFor(() => expect(input).toHaveProperty('disabled', false));
   await user.type(input, 'How much do I owe?');
   expect(hasPendingWork()).toBe(true);
+  expect(screen.getByRole('button', { name: 'Ask' })).toHaveProperty(
+    'disabled',
+    true,
+  );
+  expect(mocks.ask).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('checkbox'));
   mocks.ask.mockRejectedValueOnce(
     new ApiRequestError(
       429,
@@ -81,6 +87,10 @@ test('typed questions guard unsent work, expose limits, and clear only after suc
   await screen.findByRole('alert');
   expect(input).toHaveProperty('value', 'How much do I owe?');
   expect(mocks.ask).toHaveBeenCalledTimes(1);
+  expect(mocks.ask.mock.calls[0]?.[2]).toEqual({
+    message: 'How much do I owe?',
+    privacyAcknowledged: true,
+  });
   await user.click(screen.getByRole('button', { name: 'Ask' }));
   await screen.findByText('You owe THB 1.01.');
   expect(input).toHaveProperty('value', '');
@@ -153,4 +163,24 @@ test('untrusted household text is rendered as text and truncated answers link to
   await screen.findByText('<script>alert(1)</script>');
   expect(view.container.querySelector('script')).toBeNull();
   expect(screen.getByText(/limited set of records/)).toBeTruthy();
+});
+
+test('switching household resets consent and unsent private input', async () => {
+  const user = userEvent.setup();
+  const view = render(
+    <AssistantWorkspace household={household} token="token" />,
+  );
+  const input = screen.getByRole('textbox', { name: 'Ask your own question' });
+  await waitFor(() => expect(input).toHaveProperty('disabled', false));
+  await user.type(input, 'How much do I owe?');
+  await user.click(screen.getByRole('checkbox'));
+  view.rerender(
+    <AssistantWorkspace
+      household={{ ...household, id: 'other' }}
+      token="token"
+    />,
+  );
+  expect(input).toHaveProperty('value', '');
+  expect(screen.getByRole('checkbox')).toHaveProperty('checked', false);
+  expect(mocks.ask).not.toHaveBeenCalled();
 });

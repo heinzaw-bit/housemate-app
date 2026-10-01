@@ -39,6 +39,7 @@ export function AssistantWorkspace({
 }) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [message, setMessage] = useState('');
+  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -50,6 +51,8 @@ export function AssistantWorkspace({
   useEffect(() => {
     const controller = new AbortController();
     setEnabled(null);
+    setPrivacyAcknowledged(false);
+    setMessage('');
     setBusy(false);
     setStatus('');
     setTurns([]);
@@ -75,7 +78,7 @@ export function AssistantWorkspace({
   async function ask(
     question:
       | { topic: AssistantTopic; message?: never }
-      | { message: string; topic?: never },
+      | { message: string; topic?: never; privacyAcknowledged: true },
     label: string,
   ) {
     if (current.current) return;
@@ -176,8 +179,11 @@ export function AssistantWorkspace({
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            if (enabled && message.trim())
-              void ask({ message: message.trim() }, message.trim());
+            if (enabled && privacyAcknowledged && message.trim())
+              void ask(
+                { message: message.trim(), privacyAcknowledged: true },
+                message.trim(),
+              );
           }}
         >
           <label className={styles.label} htmlFor="assistant-question">
@@ -194,15 +200,36 @@ export function AssistantWorkspace({
             placeholder="For example: Who is cooking today?"
             aria-describedby="assistant-privacy"
           />
+          <p id="assistant-privacy" className={styles.muted}>
+            General questions are sent to Gemini. Google may use or review them
+            under its{' '}
+            <a
+              href="https://ai.google.dev/gemini-api/terms"
+              target="_blank"
+              rel="noreferrer"
+            >
+              free service terms
+            </a>
+            . Keep names, amounts, contact details and confidential information
+            out. Use Money for a named member’s balance. Household records stay
+            in HouseMate; this helper answers questions without changing them.
+          </p>
+          <label className={styles.consent}>
+            <input
+              type="checkbox"
+              checked={privacyAcknowledged}
+              disabled={!enabled || busy}
+              onChange={(event) => setPrivacyAcknowledged(event.target.checked)}
+            />{' '}
+            My question contains no personal or confidential information. I
+            understand Google may use or review it.
+          </label>
           <div className={styles.actions}>
-            <p id="assistant-privacy" className={styles.muted}>
-              Free-text questions are sent to OpenAI. Only your question is
-              shared; answers come from HouseMate. This first version answers
-              questions and does not change records.
-            </p>
             <Button
               type="submit"
-              disabled={!enabled || busy || !message.trim()}
+              disabled={
+                !enabled || busy || !message.trim() || !privacyAcknowledged
+              }
             >
               <Send size={16} aria-hidden="true" /> Ask
             </Button>

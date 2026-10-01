@@ -23,18 +23,20 @@ export function getAssistantConfig(
   householdId: string,
   signal?: AbortSignal,
 ) {
-  return request<{ naturalLanguageEnabled: boolean }>(
-    `/v1/households/${encodeURIComponent(householdId)}/assistant`,
-    token,
-    { signal },
-  );
+  return request<{
+    naturalLanguageEnabled: boolean;
+    provider: 'gemini' | null;
+    requiresPrivacyAcknowledgement: boolean;
+  }>(`/v1/households/${encodeURIComponent(householdId)}/assistant`, token, {
+    signal,
+  });
 }
 export function askAssistant(
   token: string,
   householdId: string,
   question:
     | { topic: AssistantTopic; message?: never }
-    | { message: string; topic?: never },
+    | { message: string; topic?: never; privacyAcknowledged: true },
   signal?: AbortSignal,
 ) {
   return request<AssistantAnswer>(
