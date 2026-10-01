@@ -1,22 +1,8 @@
 'use client';
 
-import {
-  ArrowUpRight,
-  CalendarDays,
-  ChevronDown,
-  ClipboardList,
-  Home,
-  type LucideIcon,
-  ReceiptText,
-  Send,
-  ShieldCheck,
-  ShoppingBasket,
-  Sparkles,
-  UtensilsCrossed,
-  WalletCards,
-} from 'lucide-react';
+import { ArrowUpRight, ChevronDown, Send } from 'lucide-react';
 import Link from 'next/link';
-import { type Ref, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   ApiRequestError,
@@ -26,62 +12,14 @@ import {
   getAssistantConfig,
   type Household,
 } from '@/lib/api';
+import { moneyCreateHref } from '@/lib/dashboard';
 import { useLeaveGuard } from '@/lib/pending-work';
 import styles from './assistant-workspace.module.css';
 
-const questions: {
-  topic: AssistantTopic;
-  label: string;
-  title: string;
-  hint?: string;
-  icon: LucideIcon;
-}[] = [
-  {
-    topic: 'summary',
-    label: 'What needs attention?',
-    title: 'Catch me up',
-    hint: 'A little overview of home',
-    icon: Home,
-  },
-  {
-    topic: 'balance',
-    label: 'How much do I owe?',
-    title: 'My balance',
-    hint: 'See where things stand',
-    icon: WalletCards,
-  },
-  {
-    topic: 'chores',
-    label: 'What chores are open?',
-    title: 'Open chores',
-    hint: 'What needs a helping hand',
-    icon: ClipboardList,
-  },
-  {
-    topic: 'meals',
-    label: 'What meals are coming up?',
-    title: 'Meal plans',
-    hint: 'See what’s coming up',
-    icon: UtensilsCrossed,
-  },
-  {
-    topic: 'bills',
-    label: 'Which bills are unpaid?',
-    title: 'Unpaid bills',
-    icon: ReceiptText,
-  },
-  {
-    topic: 'shopping',
-    label: 'What do we need to buy?',
-    title: 'Shopping list',
-    icon: ShoppingBasket,
-  },
-  {
-    topic: 'events',
-    label: 'What events are coming up?',
-    title: 'Upcoming events',
-    icon: CalendarDays,
-  },
+const questions: { topic: AssistantTopic; label: string; title: string }[] = [
+  { topic: 'summary', label: 'What needs attention?', title: 'Catch me up' },
+  { topic: 'meals', label: 'What meals are coming up?', title: 'Meal plans' },
+  { topic: 'balance', label: 'How much do I owe?', title: 'My balance' },
 ];
 interface Turn {
   id: number;
@@ -104,10 +42,10 @@ export function AssistantWorkspace({
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [pendingQuestion, setPendingQuestion] = useState('');
-  const latestAnswer = useRef<HTMLElement | null>(null);
   const questionInput = useRef<HTMLTextAreaElement | null>(null);
   const firstSuggestion = useRef<HTMLButtonElement | null>(null);
-  const latestId = turns.at(-1)?.id;
+  const latest = turns.at(-1);
+  const earlier = turns.slice(0, -1).reverse();
   const current = useRef<AbortController | null>(null);
   const nextId = useRef(0);
   useLeaveGuard(!!message.trim() || busy);
@@ -139,14 +77,6 @@ export function AssistantWorkspace({
       current.current = null;
     };
   }, [token, household.id]);
-
-  useEffect(() => {
-    if (latestId !== undefined)
-      latestAnswer.current?.scrollIntoView?.({
-        block: 'start',
-        behavior: 'instant',
-      });
-  }, [latestId]);
 
   function submitQuestion() {
     if (enabled && privacyAcknowledged && message.trim() && !current.current)
@@ -210,138 +140,24 @@ export function AssistantWorkspace({
     }
   }
 
+  function clearAnswers() {
+    setTurns([]);
+    setStatus('Answers cleared.');
+    if (enabled) questionInput.current?.focus();
+    else firstSuggestion.current?.focus();
+  }
+
   return (
     <div className={`content-inner ${styles.workspace}`}>
       <header className={styles.header}>
-        <div className={styles.identity}>
-          <HouseHelper />
-          <div>
-            <h1>HouseMate assistant</h1>
-            <p>
-              {household.name} <span aria-hidden="true">·</span> A helping hand
-            </p>
-          </div>
+        <HouseHelper />
+        <div>
+          <h1>What can I help with?</h1>
+          <p>{household.name} · Questions, meal plans &amp; money</p>
         </div>
-        {turns.length > 0 && (
-          <Button
-            variant="ghost"
-            className={styles.clear}
-            disabled={busy}
-            onClick={() => {
-              setTurns([]);
-              setStatus('Answers cleared.');
-              if (enabled) questionInput.current?.focus();
-              else firstSuggestion.current?.focus();
-            }}
-          >
-            Clear answers
-          </Button>
-        )}
       </header>
 
-      {turns.length === 0 && !busy && (
-        <section className={styles.welcome} aria-labelledby="assistant-welcome">
-          <div className={styles.welcomeHelper}>
-            <HouseHelper />
-            <Sparkles className={styles.sparkle} aria-hidden="true" />
-          </div>
-          <span className="eyebrow">A LITTLE HELP AT HOME</span>
-          <h2 id="assistant-welcome">
-            House life, <span>a little easier.</span>
-          </h2>
-          <p>Balances, chores, dinner plans. What’s on your mind?</p>
-        </section>
-      )}
-
-      {(turns.length > 0 || busy) && (
-        <section
-          className={styles.conversation}
-          aria-labelledby="assistant-conversation"
-        >
-          <h2 id="assistant-conversation" className={styles.srOnly}>
-            Your conversation
-          </h2>
-          <ol className={styles.turns}>
-            {turns.map((turn, index) => (
-              <li key={turn.id} className={styles.turn}>
-                <p className={styles.userMessage}>
-                  <span className={styles.srOnly}>You asked: </span>
-                  {turn.question}
-                </p>
-                <AnswerCard
-                  turn={turn}
-                  answerRef={
-                    index === turns.length - 1 ? latestAnswer : undefined
-                  }
-                />
-              </li>
-            ))}
-            {busy && (
-              <li className={styles.turn}>
-                <p className={styles.userMessage}>
-                  <span className={styles.srOnly}>You asked: </span>
-                  {pendingQuestion}
-                </p>
-                <div className={styles.thinking} aria-hidden="true">
-                  <HouseHelper />
-                  <span>Checking your household</span>
-                  <span className={styles.dots}>
-                    <i />
-                    <i />
-                    <i />
-                  </span>
-                </div>
-              </li>
-            )}
-          </ol>
-        </section>
-      )}
-
-      <fieldset
-        className={`${styles.suggestions} ${turns.length > 0 || busy ? styles.compact : ''}`}
-      >
-        <legend>
-          {turns.length > 0 || busy
-            ? 'Ask another quick question'
-            : 'A good place to start'}
-        </legend>
-        <div className={styles.promptGrid}>
-          {questions.map(({ topic, label, title, hint, icon: Icon }) => (
-            <Button
-              key={topic}
-              ref={topic === 'summary' ? firstSuggestion : undefined}
-              variant="outline"
-              className={`${styles.prompt} ${hint ? styles.featured : ''}`}
-              aria-label={`${title}: ${label}`}
-              disabled={busy}
-              onClick={() => void ask({ topic }, label)}
-            >
-              <span className={styles.promptIcon}>
-                <Icon size={20} aria-hidden="true" />
-              </span>
-              <span className={styles.promptCopy}>
-                <strong>{title}</strong>
-                {hint && <span className={styles.promptHint}>{hint}</span>}
-              </span>
-              {hint && (
-                <ArrowUpRight
-                  className={styles.promptArrow}
-                  size={16}
-                  aria-hidden="true"
-                />
-              )}
-            </Button>
-          ))}
-        </div>
-      </fieldset>
-
       <section className={styles.composer} aria-label="Ask HouseMate">
-        {enabled === false && (
-          <p className={styles.notice}>
-            Quick questions are ready. Free-text questions will become available
-            once AI setup is complete.
-          </p>
-        )}
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -351,29 +167,34 @@ export function AssistantWorkspace({
           <label className={styles.srOnly} htmlFor="assistant-question">
             Ask your own question
           </label>
-          <div className={styles.inputRow}>
-            <textarea
-              id="assistant-question"
-              ref={questionInput}
-              className={styles.input}
-              rows={2}
-              maxLength={1000}
-              value={message}
-              disabled={!enabled || busy}
-              onChange={(event) => setMessage(event.target.value)}
-              onKeyDown={(event) => {
-                if (
-                  (event.ctrlKey || event.metaKey) &&
-                  event.key === 'Enter' &&
-                  !event.nativeEvent.isComposing
-                ) {
-                  event.preventDefault();
-                  submitQuestion();
-                }
-              }}
-              placeholder="For example: Who is cooking today?"
-              aria-describedby="assistant-privacy assistant-input-hint"
-            />
+          <textarea
+            id="assistant-question"
+            ref={questionInput}
+            className={styles.input}
+            rows={4}
+            maxLength={1000}
+            value={message}
+            disabled={!enabled || busy}
+            onChange={(event) => setMessage(event.target.value)}
+            onKeyDown={(event) => {
+              if (
+                (event.ctrlKey || event.metaKey) &&
+                event.key === 'Enter' &&
+                !event.nativeEvent.isComposing
+              ) {
+                event.preventDefault();
+                submitQuestion();
+              }
+            }}
+            placeholder="Ask about your home, meal plans or money…"
+            aria-describedby="assistant-privacy"
+          />
+          <div className={styles.sendRow}>
+            <span>
+              {message.length > 800
+                ? `${message.length}/1000`
+                : 'Ctrl / ⌘ + Enter to send'}
+            </span>
             {busy ? (
               <Button
                 type="button"
@@ -395,21 +216,11 @@ export function AssistantWorkspace({
                 disabled={!enabled || !message.trim() || !privacyAcknowledged}
               >
                 <Send size={17} aria-hidden="true" />
-                <span>Ask</span>
+                Ask
               </Button>
             )}
           </div>
-          <div className={styles.composerMeta}>
-            <p id="assistant-input-hint">
-              Each question checks current records.
-            </p>
-            <span>
-              {message.length > 800
-                ? `${message.length}/1000`
-                : 'Ctrl / ⌘ + Enter to send'}
-            </span>
-          </div>
-          {enabled !== false && (
+          {enabled !== false && (message.trim() || privacyAcknowledged) && (
             <label className={styles.consent}>
               <input
                 type="checkbox"
@@ -425,46 +236,112 @@ export function AssistantWorkspace({
               </span>
             </label>
           )}
-          <details className={styles.privacy}>
-            <summary>
-              <ShieldCheck size={15} aria-hidden="true" /> Privacy &amp; how
-              this works <ChevronDown size={14} aria-hidden="true" />
-            </summary>
-            <div id="assistant-privacy">
-              <p>
-                Typed questions go to Gemini. Keep names, amounts, contact
-                details and confidential information out. Google may use or
-                review questions under its{' '}
-                <a
-                  href="https://ai.google.dev/gemini-api/terms"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  free service terms
-                </a>
-                .
-              </p>
-              <p>
-                Quick questions stay in HouseMate. Answers come from your
-                household’s records and do not change them. Use Money for a
-                named member’s balance. The six most recent answers stay in this
-                tab only; each question is checked separately.
-              </p>
-            </div>
-          </details>
         </form>
-        <p className={styles.srOnly} role="status">
-          {status ||
-            (enabled === null && !error
-              ? 'Checking assistant availability…'
-              : '')}
-        </p>
-        {error && (
-          <p className={styles.error} role="alert">
-            {error}
-          </p>
-        )}
       </section>
+
+      <fieldset
+        className={styles.shortcuts}
+        aria-label="Quick household questions"
+      >
+        {questions.map(({ topic, title, label }) => (
+          <Button
+            key={topic}
+            ref={topic === 'summary' ? firstSuggestion : undefined}
+            variant="ghost"
+            className={styles.shortcut}
+            aria-label={`${title}: ${label}`}
+            disabled={busy}
+            onClick={() => void ask({ topic }, label)}
+          >
+            {title}
+          </Button>
+        ))}
+      </fieldset>
+      <details className={styles.privacy}>
+        <summary>
+          Typed questions go to Gemini · Privacy{' '}
+          <ChevronDown size={13} aria-hidden="true" />
+        </summary>
+        <div id="assistant-privacy">
+          <p>
+            Keep names, amounts, contact details and confidential information
+            out of typed questions. Google may use or review them under its{' '}
+            <a
+              href="https://ai.google.dev/gemini-api/terms"
+              target="_blank"
+              rel="noreferrer"
+            >
+              free service terms
+            </a>
+            .
+          </p>
+          <p>
+            Quick questions stay in HouseMate. Answers use your current
+            household records; each question is checked independently. Planning
+            a meal or calculating an expense split opens the normal review flow.
+            This assistant does not save or change records. The six most recent
+            answers stay in this tab only.
+          </p>
+        </div>
+      </details>
+      {enabled === false && (
+        <p className={styles.notice}>
+          Quick questions are ready. Free-text questions will become available
+          once AI setup is complete.
+        </p>
+      )}
+      <p className={styles.srOnly} role="status">
+        {status ||
+          (enabled === null && !error
+            ? 'Checking assistant availability…'
+            : '')}
+      </p>
+      {error && (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      )}
+
+      {busy && (
+        <div className={styles.thinking}>
+          <span>Checking: {pendingQuestion}</span>
+        </div>
+      )}
+      {!busy && latest && (
+        <section className={styles.result} aria-label="Latest answer">
+          <div className={styles.resultHeading}>
+            <p className={styles.question}>{latest.question}</p>
+            <Button
+              variant="ghost"
+              className={styles.clear}
+              onClick={clearAnswers}
+            >
+              Clear answers
+            </Button>
+          </div>
+          <AnswerCard
+            key={latest.id}
+            turn={latest}
+            householdId={household.id}
+          />
+        </section>
+      )}
+      {earlier.length > 0 && (
+        <details className={styles.history}>
+          <summary>
+            Earlier answers ({earlier.length})
+            <ChevronDown size={14} aria-hidden="true" />
+          </summary>
+          <ol>
+            {earlier.map((turn) => (
+              <li key={turn.id}>
+                <p className={styles.question}>{turn.question}</p>
+                <AnswerCard turn={turn} householdId={household.id} />
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
     </div>
   );
 }
@@ -508,28 +385,18 @@ function HouseHelper() {
 
 function AnswerCard({
   turn: { id, question, answer },
-  answerRef,
+  householdId,
 }: {
   turn: Turn;
-  answerRef?: Ref<HTMLElement>;
+  householdId: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const visibleRows = expanded ? answer.rows : answer.rows.slice(0, 3);
   return (
-    <article
-      ref={answerRef}
-      className={styles.answer}
-      aria-label={`Answer to ${question}`}
-    >
-      <div className={styles.answerHeader}>
-        <HouseHelper />
-        <span>HouseMate</span>
-        <span className={styles.answerTag}>
-          {answer.kind === 'clarification'
-            ? 'Let’s clarify'
-            : 'From your household'}
-        </span>
-      </div>
+    <article className={styles.answer} aria-label={`Answer to ${question}`}>
+      {answer.kind === 'clarification' && (
+        <h2 className={styles.clarification}>Let’s clarify</h2>
+      )}
       <p className={styles.answerText}>{answer.text}</p>
       {answer.rows.length > 0 && (
         <ul id={`assistant-records-${id}`} className={styles.records}>
@@ -574,6 +441,24 @@ function AnswerCard({
           </Link>
         ))}
       </nav>
+      {answer.topic === 'meals' && (
+        <Link
+          className={styles.nextAction}
+          href={`/house?view=meals&household=${encodeURIComponent(householdId)}&add=1`}
+        >
+          Plan a meal
+          <ArrowUpRight size={15} aria-hidden="true" />
+        </Link>
+      )}
+      {(answer.topic === 'balance' || answer.topic === 'bills') && (
+        <Link
+          className={styles.nextAction}
+          href={moneyCreateHref(householdId, 'expenses')}
+        >
+          Calculate a split
+          <ArrowUpRight size={15} aria-hidden="true" />
+        </Link>
+      )}
       <p className={styles.timestamp}>
         Checked{' '}
         <time dateTime={answer.generatedAt}>

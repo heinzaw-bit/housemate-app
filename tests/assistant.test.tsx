@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { AssistantWorkspace } from '../components/assistant-workspace';
@@ -63,6 +70,11 @@ test('quick questions remain usable without AI setup and show fresh, linked sour
     screen.getByRole('link', { name: 'Balances' }).getAttribute('href'),
   ).toBe('/money?view=balances&household=home');
   expect(screen.getByText(/Ask again to refresh/)).toBeTruthy();
+  expect(
+    screen
+      .getByRole('link', { name: 'Calculate a split' })
+      .getAttribute('href'),
+  ).toBe('/money?household=home&view=expenses&add=1');
 });
 
 test('typed questions guard unsent work, expose limits, and clear only after success', async () => {
@@ -141,7 +153,7 @@ test('lost membership clears earlier answers rather than retaining private recor
     new ApiRequestError(404, 'NOT_FOUND', 'Household not found.'),
   );
   await user.click(
-    screen.getByRole('button', { name: 'Open chores: What chores are open?' }),
+    screen.getByRole('button', { name: 'Catch me up: What needs attention?' }),
   );
   await screen.findByRole('alert');
   expect(screen.queryByText('You owe THB 1.01.')).toBeNull();
@@ -165,7 +177,7 @@ test('untrusted household text is rendered as text and truncated answers link to
   );
   await user.click(
     screen.getByRole('button', {
-      name: 'Shopping list: What do we need to buy?',
+      name: 'Catch me up: What needs attention?',
     }),
   );
   await screen.findByText('<script>alert(1)</script>');
@@ -189,6 +201,9 @@ test('switching household resets consent and unsent private input', async () => 
     />,
   );
   expect(input).toHaveProperty('value', '');
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  await waitFor(() => expect(input).toHaveProperty('disabled', false));
+  await user.type(input, 'How much do I owe?');
   expect(screen.getByRole('checkbox')).toHaveProperty('checked', false);
   expect(mocks.ask).not.toHaveBeenCalled();
 });
@@ -219,7 +234,7 @@ test('keyboard submission still requires consent and cancellation ignores a late
   await act(async () => resolve(answer));
   expect(screen.queryByText('You owe THB 1.01.')).toBeNull();
   await user.click(
-    screen.getByRole('button', { name: 'Open chores: What chores are open?' }),
+    screen.getByRole('button', { name: 'Catch me up: What needs attention?' }),
   );
   await screen.findByText('You owe THB 1.01.');
   expect(input).toHaveProperty('value', 'Who is cooking today?');
@@ -238,7 +253,7 @@ test('record previews expand without losing any source links or making extra req
   render(<AssistantWorkspace household={household} token="token" />);
   await user.click(
     screen.getByRole('button', {
-      name: 'Shopping list: What do we need to buy?',
+      name: 'Catch me up: What needs attention?',
     }),
   );
   await screen.findByText('Record 1');
@@ -255,7 +270,7 @@ test('record previews expand without losing any source links or making extra req
   expect(mocks.ask).toHaveBeenCalledTimes(1);
 });
 
-test('answers follow conversation order and clearing them preserves the next unsent question', async () => {
+test('latest answer stays below the composer, earlier replies expand, and clearing preserves input', async () => {
   mocks.ask
     .mockResolvedValueOnce({ ...answer, text: 'First answer' })
     .mockResolvedValueOnce({ ...answer, text: 'Second answer' });
@@ -266,12 +281,20 @@ test('answers follow conversation order and clearing them preserves the next uns
   );
   await screen.findByText('First answer');
   await user.click(
-    screen.getByRole('button', { name: 'Open chores: What chores are open?' }),
+    screen.getByRole('button', { name: 'Catch me up: What needs attention?' }),
   );
   await screen.findByText('Second answer');
-  const answers = screen.getAllByRole('article');
-  expect(answers[0]?.textContent).toContain('First answer');
-  expect(answers[1]?.textContent).toContain('Second answer');
+  const latest = screen.getByRole('region', { name: 'Latest answer' });
+  expect(within(latest).getByRole('article').textContent).toContain(
+    'Second answer',
+  );
+  const history = screen.getByText('Earlier answers (1)').closest('details');
+  expect(history).toHaveProperty('open', false);
+  await user.click(screen.getByText('Earlier answers (1)'));
+  expect(history).toHaveProperty('open', true);
+  expect(
+    within(history as HTMLElement).getByRole('article').textContent,
+  ).toContain('First answer');
   const input = screen.getByRole('textbox', { name: 'Ask your own question' });
   await user.type(input, 'What meals are coming up?');
   await user.click(screen.getByRole('button', { name: 'Clear answers' }));
@@ -280,4 +303,38 @@ test('answers follow conversation order and clearing them preserves the next uns
   expect(input).toHaveProperty('value', 'What meals are coming up?');
   expect(hasPendingWork()).toBe(true);
   expect(mocks.ask).toHaveBeenCalledTimes(2);
+});
+
+test('meal planning starts from a current meal answer and keeps the selected household', async () => {
+  mocks.ask.mockResolvedValue({
+    ...answer,
+    topic: 'meals',
+    text: 'Your upcoming meals',
+    sources: [{ label: 'Meals', href: '/house?view=meals&household=home' }],
+  });
+  const user = userEvent.setup();
+  const view = render(
+    <AssistantWorkspace household={household} token="token" />,
+  );
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  expect(
+    screen
+      .getByRole('textbox', { name: 'Ask your own question' })
+      .compareDocumentPosition(
+        screen.getByRole('button', {
+          name: 'Meal plans: What meals are coming up?',
+        }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  await user.click(
+    screen.getByRole('button', {
+      name: 'Meal plans: What meals are coming up?',
+    }),
+  );
+  await screen.findByText('Your upcoming meals');
+  expect(
+    screen.getByRole('link', { name: 'Plan a meal' }).getAttribute('href'),
+  ).toBe('/house?view=meals&household=home&add=1');
+  expect(mocks.ask.mock.calls[0]?.[2]).toEqual({ topic: 'meals' });
+  expect(view.container.querySelectorAll('textarea')).toHaveLength(1);
 });
