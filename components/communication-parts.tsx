@@ -86,7 +86,7 @@ export function CommunicationRecipients({
   disabled,
   label,
 }: {
-  members: HouseholdMember[];
+  members: Pick<HouseholdMember, 'id' | 'displayName'>[];
   selectedIds: string[];
   onChange: (ids: string[]) => void;
   disabled: boolean;

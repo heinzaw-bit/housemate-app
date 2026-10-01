@@ -6,14 +6,17 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   ApiRequestError,
+  type AssistantActionDraft,
   type AssistantAnswer,
   type AssistantTopic,
   askAssistant,
   getAssistantConfig,
   type Household,
+  prepareAssistantDraft,
 } from '@/lib/api';
 import { moneyCreateHref } from '@/lib/dashboard';
 import { useLeaveGuard } from '@/lib/pending-work';
+import { AssistantDraftReview } from './assistant-draft-review';
 import styles from './assistant-workspace.module.css';
 import { HouseMateMascot } from './housemate-mascot';
 
@@ -36,6 +39,20 @@ export function AssistantWorkspace({
   token: string;
 }) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [actionsEnabled, setActionsEnabled] = useState(false);
+  const [draft, setDraft] = useState<{
+    value: AssistantActionDraft;
+    token: string;
+    id: number;
+  } | null>(null);
+  const scope = useRef({ token, householdId: household.id });
+  scope.current = { token, householdId: household.id };
+  const activeDraft =
+    draft?.token === token &&
+    draft.value.householdId === household.id &&
+    draft.value.timezone === household.timezone
+      ? draft
+      : null;
   const [message, setMessage] = useState('');
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -49,11 +66,14 @@ export function AssistantWorkspace({
   const earlier = turns.slice(0, -1).reverse();
   const current = useRef<AbortController | null>(null);
   const nextId = useRef(0);
-  useLeaveGuard(!!message.trim() || busy);
+  useLeaveGuard(!!message.trim() || busy || !!activeDraft);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: timezone changes invalidate local-time drafts and pending preparation.
   useEffect(() => {
     const controller = new AbortController();
     setEnabled(null);
+    setActionsEnabled(false);
+    setDraft(null);
     setPrivacyAcknowledged(false);
     setMessage('');
     setBusy(false);
@@ -63,8 +83,10 @@ export function AssistantWorkspace({
     setError('');
     getAssistantConfig(token, household.id, controller.signal)
       .then((config) => {
-        if (!controller.signal.aborted)
+        if (!controller.signal.aborted) {
           setEnabled(config.naturalLanguageEnabled);
+          setActionsEnabled(config.actionDraftsEnabled === true);
+        }
       })
       .catch(() => {
         if (!controller.signal.aborted)
@@ -77,10 +99,22 @@ export function AssistantWorkspace({
       current.current?.abort();
       current.current = null;
     };
-  }, [token, household.id]);
+  }, [token, household.id, household.timezone]);
+
+  const hadDraft = useRef(false);
+  useEffect(() => {
+    if (hadDraft.current && !activeDraft && (enabled || actionsEnabled))
+      questionInput.current?.focus();
+    hadDraft.current = !!activeDraft;
+  }, [activeDraft, enabled, actionsEnabled]);
 
   function submitQuestion() {
-    if (enabled && privacyAcknowledged && message.trim() && !current.current)
+    if (
+      (actionsEnabled || (enabled && privacyAcknowledged)) &&
+      message.trim() &&
+      !current.current &&
+      !activeDraft
+    )
       void ask(
         { message: message.trim(), privacyAcknowledged: true },
         message.trim(),
@@ -93,7 +127,7 @@ export function AssistantWorkspace({
       | { message: string; topic?: never; privacyAcknowledged: true },
     label: string,
   ) {
-    if (current.current) return;
+    if (current.current || activeDraft) return;
     const controller = new AbortController();
     current.current = controller;
     setBusy(true);
@@ -101,6 +135,34 @@ export function AssistantWorkspace({
     setError('');
     setStatus('Checking household records…');
     try {
+      if (question.message && actionsEnabled) {
+        const prepared = await prepareAssistantDraft(
+          token,
+          household.id,
+          question.message,
+          controller.signal,
+        );
+        if (controller.signal.aborted) return;
+        if (prepared.draft) {
+          if (prepared.draft.householdId !== household.id)
+            throw new Error('The draft does not belong to this household.');
+          setDraft({ value: prepared.draft, token, id: ++nextId.current });
+          setMessage('');
+          setStatus(
+            'Draft ready. Complete the details, review and confirm to publish.',
+          );
+          return;
+        }
+        if (!enabled || !privacyAcknowledged) {
+          setError(
+            enabled
+              ? 'This is a general question. Confirm the Gemini privacy notice before sending it. Meal and announcement commands stay in HouseMate.'
+              : 'Try “Plan dinner tomorrow at 7pm” or “Announce that dinner is ready.” General questions are awaiting AI setup.',
+          );
+          setStatus('');
+          return;
+        }
+      }
       const answer = await askAssistant(
         token,
         household.id,
@@ -126,6 +188,8 @@ export function AssistantWorkspace({
       ) {
         setTurns([]);
         setEnabled(false);
+        setActionsEnabled(false);
+        setDraft(null);
       }
       setError(
         failure instanceof Error
@@ -144,7 +208,7 @@ export function AssistantWorkspace({
   function clearAnswers() {
     setTurns([]);
     setStatus('Answers cleared.');
-    if (enabled) questionInput.current?.focus();
+    if (enabled || actionsEnabled) questionInput.current?.focus();
     else firstSuggestion.current?.focus();
   }
 
@@ -175,7 +239,7 @@ export function AssistantWorkspace({
             rows={4}
             maxLength={1000}
             value={message}
-            disabled={!enabled || busy}
+            disabled={(!enabled && !actionsEnabled) || busy || !!activeDraft}
             onChange={(event) => setMessage(event.target.value)}
             onKeyDown={(event) => {
               if (
@@ -187,7 +251,7 @@ export function AssistantWorkspace({
                 submitQuestion();
               }
             }}
-            placeholder="Ask about your home, meal plans or money…"
+            placeholder="Ask a question, plan dinner tomorrow at 7pm, or announce a meal…"
             aria-describedby="assistant-privacy"
           />
           <div className={styles.sendRow}>
@@ -214,7 +278,11 @@ export function AssistantWorkspace({
               <Button
                 type="submit"
                 className={styles.send}
-                disabled={!enabled || !message.trim() || !privacyAcknowledged}
+                disabled={
+                  (!actionsEnabled && (!enabled || !privacyAcknowledged)) ||
+                  !message.trim() ||
+                  !!activeDraft
+                }
               >
                 <Send size={17} aria-hidden="true" />
                 Ask
@@ -226,14 +294,14 @@ export function AssistantWorkspace({
               <input
                 type="checkbox"
                 checked={privacyAcknowledged}
-                disabled={!enabled || busy}
+                disabled={!enabled || busy || !!activeDraft}
                 onChange={(event) =>
                   setPrivacyAcknowledged(event.target.checked)
                 }
               />
               <span>
-                My question has no personal or confidential details. I
-                understand Google may use or review it.
+                For general questions: my question has no personal or
+                confidential details. I understand Google may use or review it.
               </span>
             </label>
           )}
@@ -251,7 +319,7 @@ export function AssistantWorkspace({
             variant="ghost"
             className={styles.shortcut}
             aria-label={`${title}: ${label}`}
-            disabled={busy}
+            disabled={busy || !!activeDraft}
             onClick={() => void ask({ topic }, label)}
           >
             {title}
@@ -260,13 +328,15 @@ export function AssistantWorkspace({
       </fieldset>
       <details className={styles.privacy}>
         <summary>
-          Typed questions go to Gemini · Privacy{' '}
+          Draft commands stay in HouseMate · Privacy{' '}
           <ChevronDown size={13} aria-hidden="true" />
         </summary>
         <div id="assistant-privacy">
           <p>
-            Keep names, amounts, contact details and confidential information
-            out of typed questions. Google may use or review them under its{' '}
+            Meal and announcement commands are interpreted locally by HouseMate.
+            General questions go to Gemini only after your acknowledgement. Keep
+            names, amounts, contact details and confidential information out of
+            general questions. Google may use or review them under its{' '}
             <a
               href="https://ai.google.dev/gemini-api/terms"
               target="_blank"
@@ -278,17 +348,19 @@ export function AssistantWorkspace({
           </p>
           <p>
             Quick questions stay in HouseMate. Answers use your current
-            household records; each question is checked independently. Planning
-            a meal or calculating an expense split opens the normal review flow.
-            This assistant does not save or change records. The six most recent
-            answers stay in this tab only.
+            household records; each question is checked independently. Meal
+            checks and announcements use editable drafts and explicit
+            publication confirmation. Expense splits still open the normal Money
+            flow. Drafts and the six most recent answers stay in this tab only;
+            reloading loses unfinished drafts.
           </p>
         </div>
       </details>
       {enabled === false && (
         <p className={styles.notice}>
-          Quick questions are ready. Free-text questions will become available
-          once AI setup is complete.
+          Quick questions are ready.{' '}
+          {actionsEnabled && 'Meal and announcement drafts are ready too. '}
+          Free-text questions will become available once AI setup is complete.
         </p>
       )}
       <p className={styles.srOnly} role="status">
@@ -308,7 +380,64 @@ export function AssistantWorkspace({
           <span>Checking: {pendingQuestion}</span>
         </div>
       )}
-      {!busy && latest && (
+      {activeDraft && (
+        <AssistantDraftReview
+          key={activeDraft.id}
+          draft={activeDraft.value}
+          household={household}
+          token={token}
+          onCancel={() => {
+            setDraft(null);
+            setStatus('Draft cancelled. Nothing was published.');
+            questionInput.current?.focus();
+          }}
+          onPublished={(kind, recordId, title) => {
+            if (
+              scope.current.token !== token ||
+              scope.current.householdId !== household.id
+            )
+              return;
+            const href = `/house?view=${kind === 'meal' ? 'meals' : 'announcements'}&household=${encodeURIComponent(household.id)}&${kind === 'meal' ? 'meal' : 'announcement'}=${encodeURIComponent(recordId)}`;
+            const answer: AssistantAnswer = {
+              kind: 'answer',
+              topic: kind === 'meal' ? 'meals' : 'unsupported',
+              text: `${kind === 'meal' ? 'Meal check' : 'Announcement'} published: ${title}`,
+              timezone: household.timezone,
+              generatedAt: new Date().toISOString(),
+              rows: [],
+              sources: [{ label: 'Open published record', href }],
+              partial: false,
+            };
+            const publishedTurnId = ++nextId.current;
+            setTurns((previous) =>
+              [
+                ...previous,
+                {
+                  id: publishedTurnId,
+                  question: 'Your confirmed draft',
+                  answer,
+                },
+              ].slice(-6),
+            );
+            setDraft(null);
+            setStatus('Published successfully.');
+            questionInput.current?.focus();
+          }}
+          onAccessLost={(notice) => {
+            if (
+              scope.current.token !== token ||
+              scope.current.householdId !== household.id
+            )
+              return;
+            setDraft(null);
+            setTurns([]);
+            setEnabled(false);
+            setActionsEnabled(false);
+            setError(notice);
+          }}
+        />
+      )}
+      {!busy && !activeDraft && latest && (
         <section className={styles.result} aria-label="Latest answer">
           <div className={styles.resultHeading}>
             <p className={styles.question}>{latest.question}</p>

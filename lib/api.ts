@@ -18,6 +18,48 @@ export interface AssistantAnswer {
   sources: { label: string; href: string }[];
   partial: boolean;
 }
+interface AssistantActionBase {
+  householdId: string;
+  timezone: string;
+  generatedAt: string;
+  members: { id: string; displayName: string }[];
+  recipientIds: string[];
+  unresolvedFields: string[];
+  notes: string[];
+}
+export type AssistantActionDraft = AssistantActionBase &
+  (
+    | {
+        kind: 'meal';
+        fields: Pick<
+          MealDraft,
+          'mealType' | 'question' | 'startsAtLocal' | 'responseDeadlineLocal'
+        >;
+      }
+    | {
+        kind: 'announcement';
+        fields: Pick<
+          AnnouncementDraft,
+          | 'title'
+          | 'body'
+          | 'priority'
+          | 'requiresAcknowledgement'
+          | 'expiresAtLocal'
+        >;
+      }
+  );
+export function prepareAssistantDraft(
+  token: string,
+  householdId: string,
+  message: string,
+  signal?: AbortSignal,
+) {
+  return request<{ draft: AssistantActionDraft | null }>(
+    `/v1/households/${encodeURIComponent(householdId)}/assistant/drafts`,
+    token,
+    { method: 'POST', body: JSON.stringify({ message }), signal },
+  );
+}
 export function getAssistantConfig(
   token: string,
   householdId: string,
@@ -25,6 +67,7 @@ export function getAssistantConfig(
 ) {
   return request<{
     naturalLanguageEnabled: boolean;
+    actionDraftsEnabled: boolean;
     provider: 'gemini' | null;
     requiresPrivacyAcknowledgement: boolean;
   }>(`/v1/households/${encodeURIComponent(householdId)}/assistant`, token, {
