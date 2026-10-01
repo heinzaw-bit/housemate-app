@@ -4,6 +4,16 @@ Independent Next.js web client for HouseMate, published as [heinzaw-bit/housemat
 
 ## Current slice
 
+Signed-out visitors at `/` see a public landing page with feature highlights,
+setup steps, an interactive Home/Money/House tour, FAQ and a privacy overview.
+Previews use explicitly labelled fictional records and make no household reads.
+Get started opens `/sign-in`; existing members at that route return to `/`.
+Signed-in visitors continue to their dashboard. Invite/household links, pending
+invitations and sign-in callbacks retain the existing authentication/access flow.
+The landing supports the shared dark-mode toggle and responsive layouts. Its
+footer links describe the product and privacy; they are not legal terms or an
+approved legal privacy policy. No support address is invented.
+
 - Home puts household-wide Needs attention first: the three earliest unpaid bills, the next open chore, and the next meal check. Compact cards show personal balance, household unpaid-bill totals, and open shopping and chore counts. Recent activity shows three financial events and can expand to the ten returned by the API. Quick actions open Add expense, Add bill, or Shopping. Overdue bills appear first; due soon covers today through seven days ahead in the household timezone. Refresh runs on focus/reconnection and about once a minute; failed refreshes label the last snapshot as stale. Household changes clear the previous data. Events and announcements are not in the Home summary yet.
 - Money links support `?household=<id>&view=expenses|bills|balances&record=<id>`, and `&add=1` opens the selected expense or bill form. Record links are checked by the API; transfer details can open older records beyond the first history page.
 - Money opens on Balances with a shared personal-balance and household-unpaid-bills summary above Balances, Expenses, and Bills navigation. Confirmed money changes refresh the summary. Expense and bill lists pair with record details on desktop; mobile shows one selected detail at a time with a Back control.

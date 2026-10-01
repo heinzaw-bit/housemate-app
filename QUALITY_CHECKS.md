@@ -36,6 +36,22 @@ Record device model, OS/browser version, date, viewport/text scaling, connection
 
 ## Accessibility and responsive layouts
 
+### Public landing and sign-in acceptance
+
+On Android Chrome, iPhone Safari and desktop, open `/` while signed out. Check
+the hero, feature cards, setup steps, fictional product previews and FAQ at
+320px, large text, light/dark mode and reduced motion. Switch Home/Money/House
+previews using the keyboard; open FAQs with Enter/Space and check visible focus.
+All Get started/Create your household/Sign in links must open `/sign-in`.
+
+Restore a signed-in account at `/` and verify the live dashboard replaces the
+public page. Follow a household invitation and a real Google/email callback,
+including a cancelled callback: these must reach the existing authentication or
+household flow. Open `/sign-in` while signed in and check the redirect to `/`.
+No fictional preview records may appear as live household records. Automated
+tests cover routing states, tour selection and DOM structure; rendered phone,
+native FAQ keyboard activation and actual-provider acceptance remain pending.
+
 ### Theme and account switching acceptance
 
 On both target phones and desktop, check light and dark modes in every section,
