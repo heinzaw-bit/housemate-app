@@ -32,6 +32,7 @@ import {
 import { AccountMenu } from './account-menu';
 import { Brand } from './brand';
 import { HouseholdMenu } from './household-menu';
+import { HouseholdSearch } from './household-search';
 import { ThemeToggle } from './theme-toggle';
 import { WorkspaceLoading } from './workspace-loading';
 
@@ -223,6 +224,12 @@ export function Workspace({
                 day: 'numeric',
               }).format(new Date())}
             </span>
+            <HouseholdSearch
+              key={`${me.id}:${household.id}`}
+              token={preview ? undefined : token}
+              household={household}
+              disabled={signingOut || switchingAccount}
+            />
             {token && !preview ? (
               <NotificationBell
                 key={`${me.id}:${household.id}`}

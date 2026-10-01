@@ -1,3 +1,45 @@
+export const searchTypes = [
+  'expense',
+  'bill',
+  'settlement',
+  'meal',
+  'chore',
+  'shopping',
+  'event',
+  'announcement',
+  'poll',
+] as const;
+export type SearchType = (typeof searchTypes)[number];
+export interface SearchHit {
+  id: string;
+  type: SearchType;
+  title: string;
+  snippet: string;
+  status: string;
+  createdAt: string;
+  href: string;
+}
+export interface SearchPage {
+  results: SearchHit[];
+  nextCursor: string | null;
+}
+export function searchHousehold(
+  token: string,
+  householdId: string,
+  q: string,
+  type: SearchType | 'all' = 'all',
+  cursor?: string,
+  signal?: AbortSignal,
+) {
+  const query = new URLSearchParams({ q, type, limit: '20' });
+  if (cursor) query.set('cursor', cursor);
+  return request<SearchPage>(
+    `/v1/households/${encodeURIComponent(householdId)}/search?${query}`,
+    token,
+    { signal },
+  );
+}
+
 export type Currency = 'USD' | 'THB';
 
 export type AssistantTopic =
@@ -18,6 +60,15 @@ export interface AssistantAnswer {
   sources: { label: string; href: string }[];
   partial: boolean;
 }
+export const assistantActionKinds = [
+  'meal',
+  'announcement',
+  'shopping',
+  'chore',
+  'expense',
+  'bill',
+] as const;
+export type AssistantActionKind = (typeof assistantActionKinds)[number];
 interface AssistantActionBase {
   householdId: string;
   timezone: string;
@@ -47,6 +98,10 @@ export type AssistantActionDraft = AssistantActionBase &
           | 'expiresAtLocal'
         >;
       }
+    | { kind: 'shopping'; fields: ShoppingDraft }
+    | { kind: 'chore'; fields: ChoreDraft }
+    | { kind: 'expense'; fields: ExpenseDraft }
+    | { kind: 'bill'; fields: BillDraft }
   );
 export function prepareAssistantDraft(
   token: string,
@@ -57,7 +112,14 @@ export function prepareAssistantDraft(
   return request<{ draft: AssistantActionDraft | null }>(
     `/v1/households/${encodeURIComponent(householdId)}/assistant/drafts`,
     token,
-    { method: 'POST', body: JSON.stringify({ message }), signal },
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        message,
+        allowedKinds: [...assistantActionKinds],
+      }),
+      signal,
+    },
   );
 }
 export function getAssistantConfig(
@@ -68,6 +130,7 @@ export function getAssistantConfig(
   return request<{
     naturalLanguageEnabled: boolean;
     actionDraftsEnabled: boolean;
+    supportedDraftKinds?: AssistantActionKind[];
     provider: 'gemini' | null;
     requiresPrivacyAcknowledgement: boolean;
   }>(`/v1/households/${encodeURIComponent(householdId)}/assistant`, token, {
@@ -1538,10 +1601,14 @@ export function createChore(
   token: string,
   householdId: string,
   draft: ChoreDraft,
+  idempotencyKey?: string,
 ) {
   return request<Chore>(chorePath(householdId), token, {
     method: 'POST',
-    body: JSON.stringify(draft),
+    body: JSON.stringify({
+      ...draft,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+    }),
   });
 }
 export function reassignChore(
@@ -1676,10 +1743,14 @@ export function createShoppingItem(
   token: string,
   householdId: string,
   draft: ShoppingDraft,
+  idempotencyKey?: string,
 ) {
   return request<ShoppingItem>(shoppingPath(householdId), token, {
     method: 'POST',
-    body: JSON.stringify(draft),
+    body: JSON.stringify({
+      ...draft,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+    }),
   });
 }
 export function editShoppingItem(

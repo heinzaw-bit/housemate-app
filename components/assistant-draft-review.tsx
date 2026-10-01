@@ -14,13 +14,14 @@ import {
   type MealDraft,
 } from '@/lib/api';
 import { confirmationFailure } from '@/lib/financial-confirmation';
+import { AssistantRecordDraft } from './assistant-record-draft';
 import { CommunicationRecipients } from './communication-parts';
 
 type Attempt =
   | { kind: 'meal'; payload: MealDraft }
   | { kind: 'announcement'; payload: AnnouncementDraft };
 
-export function AssistantDraftReview({
+function CommunicationDraftReview({
   draft,
   household,
   token,
@@ -28,7 +29,7 @@ export function AssistantDraftReview({
   onPublished,
   onAccessLost,
 }: {
-  draft: AssistantActionDraft;
+  draft: Extract<AssistantActionDraft, { kind: 'meal' | 'announcement' }>;
   household: Household;
   token: string;
   onCancel: () => void;
@@ -492,4 +493,22 @@ export function AssistantDraftReview({
       </CardContent>
     </Card>
   );
+}
+
+export interface AssistantDraftReviewProps {
+  draft: AssistantActionDraft;
+  household: Household;
+  token: string;
+  onCancel: () => void;
+  onPublished: (
+    kind: AssistantActionDraft['kind'],
+    id: string,
+    title: string,
+  ) => void;
+  onAccessLost: (message: string) => void;
+}
+export function AssistantDraftReview(props: AssistantDraftReviewProps) {
+  if (props.draft.kind === 'meal' || props.draft.kind === 'announcement')
+    return <CommunicationDraftReview {...props} draft={props.draft} />;
+  return <AssistantRecordDraft {...props} draft={props.draft} />;
 }

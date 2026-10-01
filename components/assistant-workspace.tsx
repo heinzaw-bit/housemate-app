@@ -149,14 +149,14 @@ export function AssistantWorkspace({
           setDraft({ value: prepared.draft, token, id: ++nextId.current });
           setMessage('');
           setStatus(
-            'Draft ready. Complete the details, review and confirm to publish.',
+            'Draft ready. Complete the details, review and confirm to save.',
           );
           return;
         }
         if (!enabled || !privacyAcknowledged) {
           setError(
             enabled
-              ? 'This is a general question. Confirm the Gemini privacy notice before sending it. Meal and announcement commands stay in HouseMate.'
+              ? 'This is a general question. Confirm the Gemini privacy notice before sending it. Action drafts stay in HouseMate.'
               : 'Try “Plan dinner tomorrow at 7pm” or “Announce that dinner is ready.” General questions are awaiting AI setup.',
           );
           setStatus('');
@@ -251,7 +251,7 @@ export function AssistantWorkspace({
                 submitQuestion();
               }
             }}
-            placeholder="Ask a question, plan dinner tomorrow at 7pm, or announce a meal…"
+            placeholder="Ask a question, or draft a meal, shopping item, chore, expense or bill…"
             aria-describedby="assistant-privacy"
           />
           <div className={styles.sendRow}>
@@ -333,10 +333,10 @@ export function AssistantWorkspace({
         </summary>
         <div id="assistant-privacy">
           <p>
-            Meal and announcement commands are interpreted locally by HouseMate.
-            General questions go to Gemini only after your acknowledgement. Keep
-            names, amounts, contact details and confidential information out of
-            general questions. Google may use or review them under its{' '}
+            Action commands are interpreted locally by HouseMate. General
+            questions go to Gemini only after your acknowledgement. Keep names,
+            amounts, contact details and confidential information out of general
+            questions. Google may use or review them under its{' '}
             <a
               href="https://ai.google.dev/gemini-api/terms"
               target="_blank"
@@ -349,17 +349,17 @@ export function AssistantWorkspace({
           <p>
             Quick questions stay in HouseMate. Answers use your current
             household records; each question is checked independently. Meal
-            checks and announcements use editable drafts and explicit
-            publication confirmation. Expense splits still open the normal Money
-            flow. Drafts and the six most recent answers stay in this tab only;
-            reloading loses unfinished drafts.
+            checks, announcements, shopping, chores, expenses and bills use
+            editable drafts and explicit confirmation. Money shares come from
+            the API preview. Drafts and the six most recent answers stay in this
+            tab only; reloading loses unfinished drafts.
           </p>
         </div>
       </details>
       {enabled === false && (
         <p className={styles.notice}>
           Quick questions are ready.{' '}
-          {actionsEnabled && 'Meal and announcement drafts are ready too. '}
+          {actionsEnabled && 'Editable action drafts are ready too. '}
           Free-text questions will become available once AI setup is complete.
         </p>
       )}
@@ -388,7 +388,7 @@ export function AssistantWorkspace({
           token={token}
           onCancel={() => {
             setDraft(null);
-            setStatus('Draft cancelled. Nothing was published.');
+            setStatus('Draft cancelled. Nothing was saved.');
             questionInput.current?.focus();
           }}
           onPublished={(kind, recordId, title) => {
@@ -397,11 +397,25 @@ export function AssistantWorkspace({
               scope.current.householdId !== household.id
             )
               return;
-            const href = `/house?view=${kind === 'meal' ? 'meals' : 'announcements'}&household=${encodeURIComponent(household.id)}&${kind === 'meal' ? 'meal' : 'announcement'}=${encodeURIComponent(recordId)}`;
+            const money = kind === 'expense' || kind === 'bill';
+            const view = {
+              meal: 'meals',
+              announcement: 'announcements',
+              chore: 'chores',
+              shopping: 'shopping',
+              expense: 'expenses',
+              bill: 'bills',
+            }[kind];
+            const parameter = money
+              ? 'record'
+              : kind === 'shopping'
+                ? 'item'
+                : kind;
+            const href = `${money ? '/money' : '/house'}?view=${view}&household=${encodeURIComponent(household.id)}&${parameter}=${encodeURIComponent(recordId)}`;
             const answer: AssistantAnswer = {
               kind: 'answer',
               topic: kind === 'meal' ? 'meals' : 'unsupported',
-              text: `${kind === 'meal' ? 'Meal check' : 'Announcement'} published: ${title}`,
+              text: `${{ meal: 'Meal check', announcement: 'Announcement', chore: 'Chore', shopping: 'Shopping item', expense: 'Expense', bill: 'Bill' }[kind]} ${kind === 'meal' || kind === 'announcement' ? 'published' : 'saved'}: ${title}`,
               timezone: household.timezone,
               generatedAt: new Date().toISOString(),
               rows: [],
@@ -420,7 +434,7 @@ export function AssistantWorkspace({
               ].slice(-6),
             );
             setDraft(null);
-            setStatus('Published successfully.');
+            setStatus('Saved successfully.');
             questionInput.current?.focus();
           }}
           onAccessLost={(notice) => {
