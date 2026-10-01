@@ -1,11 +1,15 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { LandingPage } from '../components/landing-page';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 beforeEach(() => window.history.replaceState(null, '', '/'));
 test('landing actions reach sign-in and every internal anchor exists', async () => {
   document.documentElement.lang = 'en';
@@ -52,84 +56,126 @@ test('product previews support keyboard interaction and native FAQ controls expa
   ).toBe('true');
 });
 
-test('one section is visible at a time and keyboard navigation moves focus with progress', async () => {
-  const user = userEvent.setup();
-  const { container } = render(<LandingPage />);
-  const visiblePanels = () =>
-    container.querySelectorAll('.landing-panel:not([hidden])');
-  expect(visiblePanels()).toHaveLength(1);
-  expect(visiblePanels()[0].id).toBe('overview');
-  expect(
-    screen.getByRole('button', { name: 'Previous' }).hasAttribute('disabled'),
-  ).toBe(true);
-  expect(
-    screen.queryByRole('heading', { name: /Less to keep track/ }),
-  ).toBeNull();
-  const next = screen.getByRole('button', { name: 'Next' });
-  next.focus();
-  await user.keyboard('{Enter}');
-  expect(visiblePanels()).toHaveLength(1);
-  expect(visiblePanels()[0].id).toBe('features');
-  expect(window.location.hash).toBe('#features');
-  expect(screen.getByRole('heading', { name: /Less to keep track/ })).toBe(
-    document.activeElement,
+function scrollingEnvironment(reduced = false) {
+  let callback: IntersectionObserverCallback = () => {};
+  let motionChange = () => {};
+  const observer = {
+    observe: vi.fn(),
+    unobserve: vi.fn(),
+    disconnect: vi.fn(),
+  };
+  const motion = {
+    matches: reduced,
+    addEventListener: vi.fn((_event: string, listener: () => void) => {
+      motionChange = listener;
+    }),
+    removeEventListener: vi.fn(),
+  };
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => motion),
   );
-  expect(
-    screen.getByRole('link', { name: 'Features' }).getAttribute('aria-current'),
-  ).toBe('step');
-  expect(screen.getByText('02 / 06')).toBeTruthy();
-  await user.click(screen.getByRole('button', { name: 'Previous' }));
-  expect(visiblePanels()[0].id).toBe('overview');
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      observe = observer.observe;
+      unobserve = observer.unobserve;
+      disconnect = observer.disconnect;
+      constructor(listener: IntersectionObserverCallback) {
+        callback = listener;
+      }
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+    function (this: HTMLElement) {
+      return new DOMRect(0, this.id === 'overview' ? 50 : 1000, 360, 600);
+    },
+  );
+  return {
+    observer,
+    motion,
+    enter(section: Element, isIntersecting = true) {
+      act(() =>
+        callback(
+          [{ target: section, isIntersecting } as IntersectionObserverEntry],
+          observer as unknown as IntersectionObserver,
+        ),
+      );
+    },
+    reduceMotion() {
+      motion.matches = true;
+      act(() => motionChange());
+    },
+  };
+}
+
+test('natural scroll reveals upcoming sections once without hiding content or changing history', () => {
+  const env = scrollingEnvironment();
+  window.history.replaceState({ retained: true }, '', '/?source=invite#tour');
+  const { container, unmount } = render(<LandingPage />);
+  const sections = container.querySelectorAll<HTMLElement>('.landing-panel');
+  expect(sections).toHaveLength(6);
+  expect(container.querySelector('[hidden]')).toBeNull();
+  expect(screen.queryByRole('button', { name: /Next|Previous/ })).toBeNull();
+  expect(screen.queryByText('01 / 06')).toBeNull();
+  expect(sections[0].dataset.reveal).toBe('visible');
+  const features = container.querySelector<HTMLElement>('#features');
+  if (!features) throw new Error('Features section missing');
+  expect(features.dataset.reveal).toBe('pending');
+  env.enter(features, false);
+  expect(features.dataset.reveal).toBe('pending');
+  env.enter(features);
+  expect(features.dataset.reveal).toBe('visible');
+  expect(env.observer.unobserve).toHaveBeenCalledWith(features);
+  env.enter(features, false);
+  expect(features.dataset.reveal).toBe('visible');
+  expect(window.location.search).toBe('?source=invite');
+  expect(window.location.hash).toBe('#tour');
+  expect(window.history.state).toEqual({ retained: true });
+  unmount();
+  expect(env.observer.disconnect).toHaveBeenCalled();
+  expect(env.motion.removeEventListener).toHaveBeenCalled();
 });
 
-test('section deep links and browser history keep the correct panel accessible', async () => {
-  window.history.replaceState(
-    { nextState: 'retained' },
-    '',
-    '/?source=invite#tour',
-  );
-  const user = userEvent.setup();
+test('keyboard focus and changes to reduced motion reveal content immediately', () => {
+  const env = scrollingEnvironment();
   const { container } = render(<LandingPage />);
-  expect(
-    screen.getByRole('heading', { name: /Clear at a glance/ }),
-  ).toBeTruthy();
-  await user.click(screen.getByRole('link', { name: 'Privacy overview' }));
-  expect(window.location.search).toBe('?source=invite');
-  expect(window.history.state).toEqual({ nextState: 'retained' });
-  expect(
-    screen.getByRole('heading', { name: 'Shared with the right people.' }),
-  ).toBe(document.activeElement);
-  act(() => window.history.back());
-  await waitFor(() =>
-    expect(
-      screen.getByRole('heading', { name: /Clear at a glance/ }),
-    ).toBeTruthy(),
+  const tour = container.querySelector<HTMLElement>('#tour');
+  if (!tour) throw new Error('Tour section missing');
+  expect(tour.dataset.reveal).toBe('pending');
+  act(() => screen.getByRole('button', { name: 'House' }).focus());
+  expect(tour.dataset.reveal).toBe('visible');
+  expect(screen.getByRole('button', { name: 'House' })).toBe(
+    document.activeElement,
   );
-  act(() => window.history.forward());
-  await waitFor(() =>
-    expect(
-      screen.getByRole('heading', { name: 'Shared with the right people.' }),
-    ).toBeTruthy(),
-  );
-  await user.click(screen.getByRole('link', { name: 'FAQ' }));
-  expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
-  expect(
-    screen
-      .getAllByRole('link', { name: 'Get started' })
-      .every((link) => link.getAttribute('href') === '/sign-in'),
-  ).toBe(true);
-  expect(
-    screen
-      .getByRole('link', { name: 'Create your household' })
-      .getAttribute('href'),
-  ).toBe('/sign-in');
-  await user.click(screen.getByRole('link', { name: 'Skip to main content' }));
-  expect(document.activeElement).toBe(screen.getByRole('main'));
-  expect(
-    screen.getByRole('heading', { name: 'Make yourself comfortable.' }),
-  ).toBeTruthy();
-  const results = await axe.run(container, {
-    rules: { 'color-contrast': { enabled: false } },
-  });
-  expect(results.violations.map((violation) => violation.id)).toEqual([]);
+  env.reduceMotion();
+  expect(container.querySelector('[data-reveal="pending"]')).toBeNull();
+  expect(env.observer.disconnect).toHaveBeenCalled();
 });
+
+test.each(['reduced motion', 'unsupported observer', 'failed observer'])(
+  'all sections remain readable with %s',
+  (mode) => {
+    const env = scrollingEnvironment(mode === 'reduced motion');
+    if (mode === 'unsupported observer')
+      vi.stubGlobal('IntersectionObserver', undefined);
+    if (mode === 'failed observer')
+      vi.stubGlobal(
+        'IntersectionObserver',
+        class {
+          constructor() {
+            throw new Error('Unavailable');
+          }
+        },
+      );
+    const { container } = render(<LandingPage />);
+    expect(container.querySelectorAll('.landing-panel')).toHaveLength(6);
+    expect(
+      container.querySelector('[hidden], [data-reveal="pending"]'),
+    ).toBeNull();
+    expect(
+      screen.getByRole('heading', { name: 'Make yourself comfortable.' }),
+    ).toBeTruthy();
+    expect(env.observer.observe).not.toHaveBeenCalled();
+  },
+);

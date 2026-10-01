@@ -6,11 +6,10 @@ Independent Next.js web client for HouseMate, published as [heinzaw-bit/housemat
 
 Signed-out visitors at `/` see a public landing page with feature highlights,
 setup steps, an interactive Home/Money/House tour, FAQ and a privacy overview.
-Six guided sections show one at a time, with header links, Previous/Next controls
-and a progress indicator. Sections fade in; reduced-motion preferences disable
-animation. Section hashes support direct links and browser Back/Forward. Small
-screens can scroll within the current section without revealing the other five.
-Without JavaScript, the public content falls back to the full readable page.
+Six sections follow the natural page scroll, with header links to jump directly
+to content. Sections fade in as they enter view and remain visible afterward.
+Reduced motion, unavailable animation APIs and keyboard focus keep content
+readable. All public content is server-rendered and readable without JavaScript.
 Previews use explicitly labelled fictional records and make no household reads.
 Get started opens `/sign-in`; existing members at that route return to `/`.
 Signed-in visitors continue to their dashboard. Invite/household links, pending

@@ -43,13 +43,15 @@ the hero, feature cards, setup steps, fictional product previews and FAQ at
 320px, large text, light/dark mode and reduced motion. Switch Home/Money/House
 previews using the keyboard; open FAQs with Enter/Space and check visible focus.
 All Get started/Create your household/Sign in links must open `/sign-in`.
-Verify only the selected section is visible/reachable by keyboard, Next/Previous
-move focus to its heading, and the progress/header selection follows navigation.
+Scroll naturally through all six sections: upcoming sections should fade in as
+they enter view and remain visible when scrolling back. Check wheel, touch and
+keyboard scrolling, with no scroll snapping, progress counter or page controls.
 Open a `/#tour` or `/#privacy` link; check reload and browser Back/Forward. Check
-the fade with normal motion and its absence with reduced motion. At large text
-and on a phone, longer sections may scroll, with header and pagination controls
-remaining reachable. Disable JavaScript and verify the full public content can
-still be read through ordinary anchor links.
+the fade with normal motion and its absence with reduced motion, including a
+device preference change while the page is open. Tab into an upcoming section;
+its focused content must become visible. At large text and on phones, sections
+must grow without clipping, with header links reachable. Disable JavaScript or
+IntersectionObserver and verify all content remains readable.
 
 Restore a signed-in account at `/` and verify the live dashboard replaces the
 public page. Follow a household invitation and a real Google/email callback,

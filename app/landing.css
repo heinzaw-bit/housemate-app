@@ -4,67 +4,55 @@
   color: var(--foreground);
   --landing-soft: color-mix(in srgb, var(--primary) 7%, var(--card));
 }
-.landing-guided {
-  display: flex;
-  flex-direction: column;
-  min-height: 100svh;
-}
-.landing-guided .landing-header {
+.landing-scroll .landing-header {
   position: sticky;
   top: 0;
   z-index: 20;
   background: var(--background);
   gap: 24px;
 }
-.landing-guided .landing-header > nav {
+.landing-scroll .landing-header > nav {
   gap: 18px;
 }
-.landing-guided .landing-header nav a {
+.landing-scroll .landing-header nav a {
   white-space: nowrap;
-  border-bottom: 2px solid transparent;
-}
-.landing-guided .landing-header nav a[aria-current="step"] {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
 }
 .landing-stage {
-  flex: 1;
-  display: grid;
-  align-items: center;
   min-width: 0;
 }
 .landing-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: calc(100svh - 110px);
   min-width: 0;
-  padding-block: 24px;
-  animation: landing-section-fade 380ms ease-out;
+  padding-block: 56px;
+  scroll-margin-top: 150px;
+  opacity: 1;
+  transition: opacity 600ms ease-out;
 }
-.landing-panel[hidden] {
-  display: none;
+.landing-panel[data-reveal="pending"] {
+  opacity: 0;
+}
+.landing-panel:focus-within {
+  opacity: 1;
 }
 .landing-panel h1,
 .landing-panel h2 {
   scroll-margin-top: 170px;
 }
-@keyframes landing-section-fade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-.landing-guided .landing-hero {
+.landing-scroll .landing-hero {
   padding-block: 24px 30px;
 }
-.landing-guided .landing-features,
-.landing-guided .landing-product,
-.landing-guided .landing-faq {
+.landing-scroll .landing-features,
+.landing-scroll .landing-product,
+.landing-scroll .landing-faq {
   padding-block: 16px;
 }
-.landing-guided .landing-how {
-  padding-block: 36px;
+.landing-scroll .landing-how {
+  padding-block: 52px;
 }
-.landing-guided .landing-section-intro {
+.landing-scroll .landing-section-intro {
   margin-bottom: 28px;
 }
 .landing-section-cta {
@@ -75,67 +63,14 @@
   padding-top: 24px;
   font-weight: 650;
 }
-.landing-pagination {
-  position: sticky;
-  bottom: 0;
-  z-index: 10;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding-block: 12px max(12px, env(safe-area-inset-bottom));
-  background: var(--background);
-  border-top: 1px solid var(--border);
-}
-.landing-pagination p {
-  margin: 0;
-  display: grid;
-  gap: 3px;
-  text-align: center;
-  font-size: 13px;
-  font-weight: 600;
-}
-.landing-pagination p > span {
-  color: var(--muted-foreground);
-  font-size: 11px;
-  font-weight: 450;
-  letter-spacing: 0.08em;
-}
-.landing-step-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 10px 16px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
-  color: var(--foreground);
-  font-size: 13px;
-  font-weight: 600;
-}
-.landing-step-button:hover:not(:disabled) {
-  background: var(--secondary);
-}
-.landing-step-button:disabled {
-  color: var(--muted-foreground);
-  opacity: 0.55;
-  cursor: default;
-}
-.landing-step-next {
-  background: var(--primary);
-  color: var(--primary-foreground);
-}
-.landing-step-next:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--primary) 85%, var(--foreground));
-}
-.landing-guided .landing-footer {
-  padding-block: 22px;
+.landing-scroll .landing-footer {
+  padding-block: 32px;
 }
 @media (prefers-reduced-motion: reduce) {
-  .landing-panel {
-    animation: none;
+  .landing-panel,
+  .landing-panel[data-reveal="pending"] {
+    opacity: 1;
+    transition: none;
   }
 }
 .landing-container {
@@ -979,11 +914,11 @@
   font-size: 12px;
 }
 @media (max-width: 1050px) {
-  .landing-guided .landing-header {
+  .landing-scroll .landing-header {
     flex-wrap: wrap;
     gap: 10px;
   }
-  .landing-guided .landing-header > nav {
+  .landing-scroll .landing-header > nav {
     order: 3;
     width: 100%;
     overflow-x: auto;
@@ -992,7 +927,7 @@
     gap: 20px;
     scrollbar-width: thin;
   }
-  .landing-guided .landing-header-actions {
+  .landing-scroll .landing-header-actions {
     margin-left: auto;
   }
   .landing-header {
@@ -1062,29 +997,22 @@
   }
 }
 @media (max-width: 650px) {
-  .landing-pagination p {
-    max-width: 86px;
-    font-size: 11px;
-  }
-  .landing-pagination .landing-button,
-  .landing-step-button {
-    min-height: 44px;
-    padding: 10px;
-    gap: 5px;
-    font-size: 12px;
+  .landing-panel {
+    min-height: auto;
+    padding-block: 38px;
   }
   .landing-section-cta {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
   }
-  .landing-guided .landing-feature-card {
+  .landing-scroll .landing-feature-card {
     padding: 18px;
   }
-  .landing-guided .landing-feature-card h3 {
+  .landing-scroll .landing-feature-card h3 {
     margin-top: 14px;
   }
-  .landing-guided .landing-feature-card ul {
+  .landing-scroll .landing-feature-card ul {
     padding-top: 14px;
   }
   .landing-container {
