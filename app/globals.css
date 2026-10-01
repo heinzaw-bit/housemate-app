@@ -99,6 +99,10 @@ a {
   color: var(--green);
   background: #e6edcf;
 }
+.brand-icon svg {
+  width: 84%;
+  height: 84%;
+}
 .brand-dot {
   color: #e9b962;
 }

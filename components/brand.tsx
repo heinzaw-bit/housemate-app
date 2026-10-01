@@ -1,10 +1,10 @@
-import { House } from 'lucide-react';
+import { HouseMateMascot } from './housemate-mascot';
 
 export function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <div className={`brand ${compact ? 'brand-compact' : ''}`}>
       <span className="brand-icon">
-        <House size={22} strokeWidth={2.5} aria-hidden="true" />
+        <HouseMateMascot />
       </span>
       {!compact && (
         <span className="brand-name">

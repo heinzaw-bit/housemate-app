@@ -100,3 +100,7 @@ pending; automated tests simulate provider and API replies.
 3. Background the app and disconnect/reconnect. Verify background polling pauses while hidden/offline and read refresh resumes on return without losing a draft or replaying writes. Compare before/after under the same conditions before making runtime performance claims.
 
 Live web push acceptance remains separate and blocked on a real public server contact; do not fabricate one for these checks.
+
+### Mascot branding acceptance
+
+On the production HTTPS origin, check the smiling house logo on landing, sign-in and desktop/phone navigation in light and dark themes. Check the browser icon and a fresh Android Chrome/iPhone Safari installation: Android circle/squircle crops must retain the face and gold sparkle; iPhone must show the same character. Compare existing installations after their platform icon refresh. Real-device acceptance remains pending; PNG dimensions and maskable padding checks do not verify OS rendering.

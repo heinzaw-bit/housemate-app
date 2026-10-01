@@ -17,7 +17,10 @@ export const metadata: Metadata = {
     'A calmer way to manage money, plans, and the everyday stuff with your housemates.',
   applicationName: 'HouseMate',
   manifest: '/manifest.webmanifest',
-  icons: { icon: '/icon.svg', apple: '/apple-touch-icon.png' },
+  icons: {
+    icon: '/icon.svg?v=mascot-1',
+    apple: '/apple-touch-icon.png?v=mascot-1',
+  },
   appleWebApp: { capable: true, title: 'HouseMate', statusBarStyle: 'default' },
 };
 
