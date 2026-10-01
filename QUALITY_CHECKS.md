@@ -104,3 +104,7 @@ Live web push acceptance remains separate and blocked on a real public server co
 ### Mascot branding acceptance
 
 On the production HTTPS origin, check the smiling house logo on landing, sign-in and desktop/phone navigation in light and dark themes. Check the browser icon and a fresh Android Chrome/iPhone Safari installation: Android circle/squircle crops must retain the face and gold sparkle; iPhone must show the same character. Compare existing installations after their platform icon refresh. Real-device acceptance remains pending; PNG dimensions and maskable padding checks do not verify OS rendering.
+
+### Compact Home and Money acceptance
+
+Check that the sidebar profile displays the avatar/name with no email line and Home has no Quick actions button group. In Money, load at least four source entries and recorded transfers: each card starts with the three newest by source/transfer date; its Show more/Show less button has an accurate expanded state and works by keyboard. Expand/collapse each independently, select a different member and check the source preview resets, then load older pages after expanding a list with at least 50 records. Collapsing must not change the API-calculated balance or discard loaded history. A newly recorded backdated transfer must retain date order. Check 320px width and dark mode. Signed-in browser/device acceptance remains pending.

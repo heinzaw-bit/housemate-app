@@ -197,7 +197,6 @@ export function Workspace({
             <span className="avatar">{firstName.charAt(0).toUpperCase()}</span>
             <span>
               <strong>{me.displayName}</strong>
-              <small>{me.email ?? 'HouseMate member'}</small>
             </span>
           </div>
         </div>

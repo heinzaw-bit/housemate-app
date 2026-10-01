@@ -3,7 +3,6 @@
 import {
   ArrowUpRight,
   ClipboardList,
-  Plus,
   ReceiptText,
   RefreshCw,
   ShoppingBasket,
@@ -12,7 +11,7 @@ import {
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   ApiRequestError,
@@ -25,7 +24,6 @@ import {
   activityHref,
   activityLabel,
   dashboardStaleAfterMs,
-  moneyCreateHref,
   moneyHref,
 } from '@/lib/dashboard';
 import { formatRecordDate } from '@/lib/date-format';
@@ -477,32 +475,6 @@ export function HomeDashboard({
           </section>
         </>
       )}
-
-      <section aria-labelledby="quick-actions-heading" className="space-y-3">
-        <h2 id="quick-actions-heading" className="font-heading text-xl">
-          Quick actions
-        </h2>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            className={buttonVariants({ variant: 'default', size: 'lg' })}
-            href={moneyCreateHref(household.id, 'expenses')}
-          >
-            <Plus size={16} aria-hidden="true" /> Add expense
-          </Link>
-          <Link
-            className={buttonVariants({ variant: 'outline', size: 'lg' })}
-            href={moneyCreateHref(household.id, 'bills')}
-          >
-            <Plus size={16} aria-hidden="true" /> Add bill
-          </Link>
-          <Link
-            className={buttonVariants({ variant: 'outline', size: 'lg' })}
-            href={`/house?household=${encodeURIComponent(household.id)}&shopping=1`}
-          >
-            <ShoppingBasket size={16} aria-hidden="true" /> Open shopping
-          </Link>
-        </div>
-      </section>
     </div>
   );
 }

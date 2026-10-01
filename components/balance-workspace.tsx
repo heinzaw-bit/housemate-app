@@ -1,7 +1,7 @@
 'use client';
 
-import { ArrowRight, HandCoins, ListFilter } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { ArrowRight, ChevronDown, HandCoins, ListFilter } from 'lucide-react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -92,6 +92,10 @@ export function BalanceWorkspace({
   const [selectedMemberId, setSelectedMemberId] = useState('');
   const [entries, setEntries] = useState<BalanceEntry[]>([]);
   const [hasMoreEntries, setHasMoreEntries] = useState(false);
+  const [entriesExpanded, setEntriesExpanded] = useState(false);
+  const [transfersExpanded, setTransfersExpanded] = useState(false);
+  const entriesId = useId();
+  const transfersId = useId();
   const [loading, setLoading] = useState(true);
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [moreBusy, setMoreBusy] = useState<'entries' | 'settlements' | null>(
@@ -191,6 +195,8 @@ export function BalanceWorkspace({
     if (!selectedMemberId) return;
     let current = true;
     setEntries([]);
+    setEntriesExpanded(false);
+    setHasMoreEntries(false);
     setEntriesLoading(true);
     setEntryError('');
     void getBalanceEntries(token, household.id, selectedMemberId)
@@ -412,6 +418,13 @@ export function BalanceWorkspace({
   const selected = summary?.members.find(
     (member) => member.memberId === selectedMemberId,
   );
+  // Match the API's transfer-date order, including a newly recorded backdated transfer.
+  const orderedSettlements = [...settlements].sort(
+    (a, b) =>
+      b.settledOn.localeCompare(a.settledOn) ||
+      b.createdAt.localeCompare(a.createdAt) ||
+      b.id.localeCompare(a.id),
+  );
   return (
     <div className="content-inner space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -497,7 +510,31 @@ export function BalanceWorkspace({
             <div className="grid gap-5 lg:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle>Why this balance?</CardTitle>
+                  <div className="flex items-start justify-between gap-3">
+                    <CardTitle>Why this balance?</CardTitle>
+                    {!entriesLoading &&
+                      (entries.length > 3 || hasMoreEntries) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={
+                            entriesExpanded
+                              ? 'Show fewer balance sources'
+                              : 'Show more balance sources'
+                          }
+                          aria-expanded={entriesExpanded}
+                          aria-controls={entriesId}
+                          onClick={() => setEntriesExpanded((old) => !old)}
+                        >
+                          {entriesExpanded ? 'Show less' : 'Show more'}
+                          <ChevronDown
+                            size={16}
+                            aria-hidden="true"
+                            className={entriesExpanded ? 'rotate-180' : ''}
+                          />
+                        </Button>
+                      )}
+                  </div>
                   <p className="text-sm text-muted-foreground">
                     {selected
                       ? `${selected.displayName}: ${balanceText(selected.netMinor, summary.currency)}`
@@ -510,58 +547,62 @@ export function BalanceWorkspace({
                       {entryError}
                     </p>
                   )}
-                  {entriesLoading ? (
-                    <p className="text-sm text-muted-foreground">
-                      Loading sources…
-                    </p>
-                  ) : entries.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      No confirmed expenses, paid bills, or recorded transfers
-                      for this member.
-                    </p>
-                  ) : (
-                    entries.map((entry) => (
-                      <div
-                        key={`${entry.sourceType}-${entry.sourceId}`}
-                        className="flex items-start justify-between gap-3 border-t pt-3 text-sm"
+                  <div id={entriesId} className="space-y-3">
+                    {entriesLoading ? (
+                      <p className="text-sm text-muted-foreground">
+                        Loading sources…
+                      </p>
+                    ) : entries.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No confirmed expenses, paid bills, or recorded transfers
+                        for this member.
+                      </p>
+                    ) : (
+                      entries
+                        .slice(0, entriesExpanded ? undefined : 3)
+                        .map((entry) => (
+                          <div
+                            key={`${entry.sourceType}-${entry.sourceId}`}
+                            className="flex items-start justify-between gap-3 border-t pt-3 text-sm"
+                          >
+                            <div>
+                              <strong>{entry.title}</strong>
+                              <p className="capitalize text-muted-foreground">
+                                {entry.sourceType} ·{' '}
+                                {readableDate(entry.occurredOn)}
+                              </p>
+                              <p className="text-muted-foreground">
+                                {entryExplanation(entry, summary.currency)}
+                              </p>
+                            </div>
+                            <strong
+                              className={
+                                entry.effectMinor < 0
+                                  ? 'text-destructive'
+                                  : 'text-primary'
+                              }
+                            >
+                              {entry.effectMinor < 0 ? '−' : '+'}
+                              {amountText(
+                                Math.abs(entry.effectMinor),
+                                summary.currency,
+                              )}
+                            </strong>
+                          </div>
+                        ))
+                    )}
+                    {entriesExpanded && hasMoreEntries && (
+                      <Button
+                        variant="outline"
+                        disabled={moreBusy !== null}
+                        onClick={() => void loadMoreEntries()}
                       >
-                        <div>
-                          <strong>{entry.title}</strong>
-                          <p className="capitalize text-muted-foreground">
-                            {entry.sourceType} ·{' '}
-                            {readableDate(entry.occurredOn)}
-                          </p>
-                          <p className="text-muted-foreground">
-                            {entryExplanation(entry, summary.currency)}
-                          </p>
-                        </div>
-                        <strong
-                          className={
-                            entry.effectMinor < 0
-                              ? 'text-destructive'
-                              : 'text-primary'
-                          }
-                        >
-                          {entry.effectMinor < 0 ? '−' : '+'}
-                          {amountText(
-                            Math.abs(entry.effectMinor),
-                            summary.currency,
-                          )}
-                        </strong>
-                      </div>
-                    ))
-                  )}
-                  {hasMoreEntries && (
-                    <Button
-                      variant="outline"
-                      disabled={moreBusy !== null}
-                      onClick={() => void loadMoreEntries()}
-                    >
-                      {moreBusy === 'entries'
-                        ? 'Loading…'
-                        : 'Load more sources'}
-                    </Button>
-                  )}
+                        {moreBusy === 'entries'
+                          ? 'Loading…'
+                          : 'Load more sources'}
+                      </Button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
               <Card>
@@ -891,61 +932,88 @@ export function BalanceWorkspace({
             )}
             <Card>
               <CardHeader>
-                <CardTitle>Recorded transfers</CardTitle>
+                <div className="flex items-start justify-between gap-3">
+                  <CardTitle>Recorded transfers</CardTitle>
+                  {(settlements.length > 3 || hasMoreSettlements) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={
+                        transfersExpanded
+                          ? 'Show fewer recorded transfers'
+                          : 'Show more recorded transfers'
+                      }
+                      aria-expanded={transfersExpanded}
+                      aria-controls={transfersId}
+                      onClick={() => setTransfersExpanded((old) => !old)}
+                    >
+                      {transfersExpanded ? 'Show less' : 'Show more'}
+                      <ChevronDown
+                        size={16}
+                        aria-hidden="true"
+                        className={transfersExpanded ? 'rotate-180' : ''}
+                      />
+                    </Button>
+                  )}
+                </div>
                 <p className="text-sm text-muted-foreground">
                   These entries were reported by members; HouseMate did not
                   process or verify them.
                 </p>
               </CardHeader>
               <CardContent className="space-y-3">
-                {settlements.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No transfers recorded yet.
-                  </p>
-                ) : (
-                  settlements.map((settlement) => (
-                    <div
-                      key={settlement.id}
-                      className="flex flex-wrap items-start justify-between gap-3 border-t pt-3 text-sm"
+                <div id={transfersId} className="space-y-3">
+                  {settlements.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No transfers recorded yet.
+                    </p>
+                  ) : (
+                    orderedSettlements
+                      .slice(0, transfersExpanded ? undefined : 3)
+                      .map((settlement) => (
+                        <div
+                          key={settlement.id}
+                          className="flex flex-wrap items-start justify-between gap-3 border-t pt-3 text-sm"
+                        >
+                          <div>
+                            <strong>
+                              {settlement.senderDisplayName} →{' '}
+                              {settlement.recipientDisplayName}
+                            </strong>
+                            <p className="text-muted-foreground">
+                              Transferred {readableDate(settlement.settledOn)} ·
+                              Recorded by {settlement.recordedByDisplayName}{' '}
+                              {new Intl.DateTimeFormat('en', {
+                                dateStyle: 'medium',
+                                timeStyle: 'short',
+                              }).format(new Date(settlement.createdAt))}
+                            </p>
+                            {settlement.method && (
+                              <p>Method reported: {settlement.method}</p>
+                            )}
+                            {settlement.note && <p>Note: {settlement.note}</p>}
+                          </div>
+                          <strong>
+                            {amountText(
+                              settlement.amountMinor,
+                              settlement.currency,
+                            )}
+                          </strong>
+                        </div>
+                      ))
+                  )}
+                  {transfersExpanded && hasMoreSettlements && (
+                    <Button
+                      variant="outline"
+                      disabled={moreBusy !== null}
+                      onClick={() => void loadMoreSettlements()}
                     >
-                      <div>
-                        <strong>
-                          {settlement.senderDisplayName} →{' '}
-                          {settlement.recipientDisplayName}
-                        </strong>
-                        <p className="text-muted-foreground">
-                          Transferred {readableDate(settlement.settledOn)} ·
-                          Recorded by {settlement.recordedByDisplayName}{' '}
-                          {new Intl.DateTimeFormat('en', {
-                            dateStyle: 'medium',
-                            timeStyle: 'short',
-                          }).format(new Date(settlement.createdAt))}
-                        </p>
-                        {settlement.method && (
-                          <p>Method reported: {settlement.method}</p>
-                        )}
-                        {settlement.note && <p>Note: {settlement.note}</p>}
-                      </div>
-                      <strong>
-                        {amountText(
-                          settlement.amountMinor,
-                          settlement.currency,
-                        )}
-                      </strong>
-                    </div>
-                  ))
-                )}
-                {hasMoreSettlements && (
-                  <Button
-                    variant="outline"
-                    disabled={moreBusy !== null}
-                    onClick={() => void loadMoreSettlements()}
-                  >
-                    {moreBusy === 'settlements'
-                      ? 'Loading…'
-                      : 'Load more transfers'}
-                  </Button>
-                )}
+                      {moreBusy === 'settlements'
+                        ? 'Loading…'
+                        : 'Load more transfers'}
+                    </Button>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </>
