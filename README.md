@@ -45,6 +45,18 @@ approved legal privacy policy. No support address is invented.
 - Web push explains its value before an explicit Enable action, handles blocked/unsupported browsers, refreshes existing subscriptions, and lets the member disable account devices. Lock-screen messages are generic; links stay on the app origin and require normal access checks. Sign-out unsubscribes this browser. No token is stored in the service worker. Production push is configured as of 2026-10-02. Each member opens Notifications → Settings → Refresh settings and devices → Enable push in this browser and grants permission. On iPhone (iOS 16.4+), add HouseMate to the Home Screen and open it from its icon before enabling. New opt-in receives only subsequent updates; actual delivery must be checked with the receiving app closed, without signing out. Inbox and preferences work independently of push.
 - Development-only design preview at `http://localhost:3000/preview`, with sample USD and THB households and no sign-in or API writes. Use the preview link on the sign-in screen to browse it. The preview route returns 404 in production.
 
+## Opening push notifications
+
+Notification taps immediately ask the browser to open the authorized record link,
+allowing Android Chrome to select an installed HouseMate app. The returned window
+is focused; a start-page URL is corrected to the record, and failed opening falls
+back to a live same-origin window. Missing/unsupported links open Notifications.
+Browser/OS app selection and actual phone navigation require device acceptance.
+After a deployment, open the installed app and accept its Reload update prompt
+after finishing drafts before testing a fresh notification. Keep the existing
+push subscription. Phone receipt was reported working on 2026-10-03; Android tap
+navigation was reported failing and remains subject to retest after this fix.
+
 ## Design system
 
 The web app uses shadcn/ui with Base UI primitives, the Rhea style, Olive base colors, CSS theme variables, Lucide icons, and Geist Sans. HouseMate's forest-green primary color and warm background are defined in `app/globals.css`; the shadcn configuration is in `components.json`. Shared Button, Card, Input, and Badge components live in `components/ui/` and are used by the authentication, onboarding, dashboard, invitation, and settings screens. Run `npx shadcn@latest add <component>` from this `app/` directory to add another component, then run the checks below. Keep household data and authorization in the API when changing the interface.

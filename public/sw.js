@@ -43,15 +43,34 @@ self.addEventListener('push', (event) => {
     data: { href: safePushHref(message.href) },
   }));
 });
+async function openPushTarget(href) {
+  // Let the browser route the tap to the installed app. Choosing an arbitrary
+  // same-origin tab ourselves can bring Chrome forward instead of HouseMate.
+  // Start opening during the click, before waiting for client discovery.
+  try {
+    const opened = await self.clients.openWindow(href);
+    if (opened) {
+      // A window can already be open even when explicit focus is rejected.
+      await opened.focus().catch(() => {});
+      if (opened.url === href || await opened.navigate(href)) return;
+    }
+  } catch {}
+
+  // If opening is unavailable, recover using a live same-origin window. Focus
+  // before navigation so navigation cannot prevent the app being foregrounded.
+  const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  for (const client of windows) {
+    try {
+      if (new URL(client.url).origin !== self.location.origin) continue;
+      await client.focus();
+      if (await client.navigate(href)) return;
+    } catch {}
+  }
+  throw new Error('Could not open the HouseMate notification.');
+}
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const href = safePushHref(event.notification.data?.href);
-  event.waitUntil((async () => {
-    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    const existing = windows.find((client) => new URL(client.url).origin === self.location.origin);
-    if (existing) { await existing.navigate(href); await existing.focus(); }
-    else await self.clients.openWindow(href);
-  })());
+  event.waitUntil(openPushTarget(safePushHref(event.notification.data?.href)));
 });
 self.addEventListener('pushsubscriptionchange', (event) => {
   // No session tokens live in the service worker. Refresh securely on the next signed-in visit.
