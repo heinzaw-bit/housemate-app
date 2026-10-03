@@ -4,7 +4,7 @@ Target platforms: **Android Chrome and iPhone Safari**, selected by the user. Im
 
 ## Production push activation — 2026-10-02
 
-Server VAPID/contact setup is active and the API redeployment is READY. The user reports that initial joining/sign-in and core phone flows were tested with household members; this does not mark every manual check below complete. On 2026-10-03 the user confirmed phone push delivery works and identified Android Chrome notification taps as failing to open the app directly. Exact post-tap behavior and iPhone acceptance remain to be recorded.
+Server VAPID/contact setup is active and the API redeployment is READY. The user reports that initial joining/sign-in and core phone flows were tested with household members; this does not mark every manual check below complete. On 2026-10-03 the user confirmed Android Chrome phone push delivery and, after deployment of the notification-tap fix, confirmed tapping now opens the app successfully. iPhone-specific acceptance is still being clarified; permission/category/quiet-hours and other checks below remain separate.
 
 The notification-tap handler now calls `clients.openWindow` immediately, allowing the browser to select the installed app, focuses the returned window and corrects a returned start-page URL to the source link. If opening fails or returns no window, it tries live same-origin windows, focusing before navigation and continuing past failed/closed windows. Automated worker tests verify these paths, link restrictions and safe inbox fallback; they do not establish Android/iPhone launch behavior.
 
