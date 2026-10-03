@@ -2,6 +2,12 @@
 
 Target platforms: **Android Chrome and iPhone Safari**, selected by the user. Implementation and automated checks are complete; the actual-device and signed-in rendered checks below remain pending as of 2026-09-30.
 
+## Production push activation — 2026-10-02
+
+Server VAPID/contact setup is active and the API redeployment is READY. The user reports that initial joining/sign-in and core phone flows were tested with household members; this does not mark every manual check below complete. Real push delivery remains pending.
+
+On Android Chrome and an iPhone Home Screen app (iOS 16.4+), open Notifications → Settings, refresh settings/devices, explicitly enable push and allow permission. Confirm Announcements web push is enabled and turn quiet hours off for the test. Close the receiving app without signing out. From another account, publish a new announcement addressed to the receiving account after its device was enabled. Allow about two scheduled worker cycles and verify a generic lock-screen update; tapping must open the exact authorized announcement. Check permission denial, category mute, quiet deferral, sign-out removal and no replay of old entries. Record actual phone/OS/browser and delivery/deep-link outcome; READY/healthy worker checks and simulated transport are not device-delivery proof.
+
 ## Assistant acceptance (questions and first action release)
 
 Check the chat box appears before all suggestions/results, the retained mascot and only three small shortcuts (overview, meals, personal balance). After two questions, the newest answer should be directly below the composer and earlier answers should be collapsed until opened. Verify record expansion makes no extra API call. “Plan a meal” must preserve the selected household and open its normal creation form; “Calculate a split” must open expense creation and require an API preview and explicit confirmation. Neither link saves a record on navigation.
