@@ -25,11 +25,11 @@ export function AccountMenu({
   return (
     <Menu.Root>
       <Menu.Trigger
-        className="topbar-avatar"
+        className="header-icon-button"
         aria-label={`Account menu for ${me.displayName}`}
         title="Account menu"
       >
-        {me.displayName.charAt(0).toUpperCase()}
+        <UserRound size={20} strokeWidth={2} aria-hidden="true" />
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Positioner
@@ -39,8 +39,13 @@ export function AccountMenu({
         >
           <Menu.Popup className="account-menu" aria-label="Your account">
             <div className="account-menu-identity">
-              <strong>{me.displayName}</strong>
-              <span>{me.email ?? 'HouseMate member'}</span>
+              <span className="account-menu-avatar" aria-hidden="true">
+                {me.displayName.charAt(0).toUpperCase()}
+              </span>
+              <div className="account-menu-copy">
+                <strong>{me.displayName}</strong>
+                <span>{me.email ?? 'HouseMate member'}</span>
+              </div>
             </div>
             <Menu.LinkItem
               className="account-menu-item"

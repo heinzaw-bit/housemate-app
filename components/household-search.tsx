@@ -1,7 +1,18 @@
 'use client';
 
 import { Dialog } from '@base-ui/react/dialog';
-import { ArrowUpRight, Search, X } from 'lucide-react';
+import {
+  ArrowRightLeft,
+  CalendarDays,
+  ClipboardList,
+  Megaphone,
+  Receipt,
+  Search,
+  ShoppingBasket,
+  Utensils,
+  Wallet,
+  X,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState } from 'react';
 import {
@@ -27,6 +38,17 @@ const labels: Record<SearchType, string> = {
   event: 'Events',
   announcement: 'Announcements',
   poll: 'Polls',
+};
+const icons = {
+  expense: Wallet,
+  bill: Receipt,
+  settlement: ArrowRightLeft,
+  meal: Utensils,
+  chore: ClipboardList,
+  shopping: ShoppingBasket,
+  event: CalendarDays,
+  announcement: Megaphone,
+  poll: ClipboardList,
 };
 
 export function HouseholdSearch({
@@ -54,10 +76,44 @@ export function HouseholdSearch({
   const inFlight = useRef(false);
   const controller = useRef<AbortController | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const popup = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const id = useId();
   const term = query.trim();
   const available = !!token && !disabled;
+  const dateFormatter = new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeZone: household.timezone,
+  });
+  const shortDateFormatter = new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: household.timezone,
+  });
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!open || !viewport) return;
+    function position() {
+      if (!viewport) return;
+      popup.current?.style.setProperty(
+        '--search-visible-height',
+        `${viewport.height}px`,
+      );
+      popup.current?.style.setProperty(
+        '--search-keyboard-offset',
+        `${Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)}px`,
+      );
+    }
+    position();
+    viewport.addEventListener('resize', position);
+    viewport.addEventListener('scroll', position);
+    return () => {
+      viewport.removeEventListener('resize', position);
+      viewport.removeEventListener('scroll', position);
+    };
+  }, [open]);
 
   function invalidate() {
     version.current++;
@@ -253,7 +309,7 @@ export function HouseholdSearch({
   return (
     <Dialog.Root open={open} onOpenChange={changeOpen}>
       <Dialog.Trigger
-        className={styles.trigger}
+        className="header-icon-button"
         disabled={!available}
         aria-label="Search household records"
         title={
@@ -262,21 +318,22 @@ export function HouseholdSearch({
             : 'Search is available in your signed-in household'
         }
       >
-        <Search size={19} aria-hidden="true" />
-        <span>Search</span>
+        <Search size={20} strokeWidth={2} aria-hidden="true" />
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Backdrop className={styles.backdrop} />
-        <Dialog.Popup className={styles.popup} initialFocus={input}>
+        <Dialog.Popup ref={popup} className={styles.popup} initialFocus={input}>
           <div className={styles.heading}>
-            <Dialog.Title>Search your household</Dialog.Title>
+            <div className={styles.headingCopy}>
+              <Dialog.Title>Search</Dialog.Title>
+              <Dialog.Description className={styles.description}>
+                In {household.name}
+              </Dialog.Description>
+            </div>
             <Dialog.Close className={styles.close} aria-label="Close search">
               <X size={20} aria-hidden="true" />
             </Dialog.Close>
           </div>
-          <Dialog.Description className={styles.description}>
-            Find saved records in {household.name}. Newest added first.
-          </Dialog.Description>
           <div className={styles.controls}>
             <label htmlFor={`${id}-query`} className="sr-only">
               Search records
@@ -289,7 +346,7 @@ export function HouseholdSearch({
                 type="search"
                 value={query}
                 maxLength={120}
-                placeholder="Try rent, dinner, or cleaning…"
+                placeholder="Search household records…"
                 aria-describedby={`${id}-help`}
                 onChange={(event) => changeQuery(event.target.value)}
                 onCompositionStart={() => setComposing(true)}
@@ -318,7 +375,9 @@ export function HouseholdSearch({
               )}
             </div>
             <div className={styles.filter}>
-              <label htmlFor={`${id}-type`}>Record type</label>
+              <label htmlFor={`${id}-type`} className="sr-only">
+                Record type
+              </label>
               <select
                 id={`${id}-type`}
                 value={type}
@@ -333,9 +392,21 @@ export function HouseholdSearch({
                   </option>
                 ))}
               </select>
+              <p role="status" className={styles.status}>
+                {loading
+                  ? 'Searching…'
+                  : searched
+                    ? `${results.length} results${cursor ? ' · more available' : ''}`
+                    : ''}
+              </p>
             </div>
-            <p id={`${id}-help`} className={styles.help}>
-              Enter at least 2 characters. Searches titles and descriptive text.
+            <p
+              id={`${id}-help`}
+              className={term.length === 1 ? styles.help : 'sr-only'}
+            >
+              {term.length === 1
+                ? 'Type at least 2 characters.'
+                : 'Search saved household records.'}
             </p>
           </div>
           {pending && (
@@ -343,127 +414,120 @@ export function HouseholdSearch({
               Finish or discard your open draft before opening a result.
             </p>
           )}
-          <div className={styles.results}>
-            {!online ? (
-              <p role="status" className={styles.empty}>
-                You’re offline. Reconnect to search current household records.
-              </p>
-            ) : (
-              <>
-                {error && (
-                  <div className={styles.notice} role="alert">
-                    <p>{error}</p>
-                    <Button
-                      variant="outline"
-                      disabled={loading}
-                      onClick={() => {
-                        if (results.length && cursor) void more();
-                        else setRetry((value) => value + 1);
-                      }}
-                    >
-                      Try again
-                    </Button>
-                  </div>
-                )}
-                <p role="status" className={styles.help}>
-                  {loading
-                    ? 'Searching…'
-                    : searched
-                      ? `${results.length} results loaded${cursor ? ' · more available' : ''}`
-                      : term.length < 2
-                        ? 'Your search stays in this session.'
-                        : ''}
+          {(searched || error || !online || results.length > 0) && (
+            <div className={styles.results}>
+              {!online ? (
+                <p role="status" className={styles.empty}>
+                  You’re offline. Reconnect to search current household records.
                 </p>
-                {!loading && !error && !searched && term.length < 2 && (
-                  <div className={styles.empty}>
-                    <Search size={28} aria-hidden="true" />
-                    <p>
-                      Bills, expenses, meals, chores and more—all in one place.
-                    </p>
-                  </div>
-                )}
-                {searched && !loading && results.length === 0 && (
-                  <p className={styles.empty}>
-                    No matches. Try a shorter phrase or another record type.
-                  </p>
-                )}
-                <ul
-                  ref={list}
-                  className={styles.list}
-                  aria-label="Search results"
-                  onKeyDown={(event) => {
-                    if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
-                    const links = Array.from(
-                      list.current?.querySelectorAll<HTMLAnchorElement>('a') ??
-                        [],
-                    );
-                    const index = links.indexOf(
-                      document.activeElement as HTMLAnchorElement,
-                    );
-                    if (index < 0) return;
-                    event.preventDefault();
-                    if (event.key === 'ArrowUp' && index === 0)
-                      input.current?.focus();
-                    else
-                      links[
-                        Math.min(
-                          links.length - 1,
-                          Math.max(
-                            0,
-                            index + (event.key === 'ArrowDown' ? 1 : -1),
-                          ),
-                        )
-                      ]?.focus();
-                  }}
-                >
-                  {results.map((hit) => (
-                    <li key={`${hit.type}:${hit.id}`}>
-                      <Link
-                        href={hit.href}
-                        className={styles.result}
-                        aria-disabled={pending || undefined}
-                        onClick={(event) => {
-                          if (hasPendingWork()) {
-                            event.preventDefault();
-                            setError(
-                              'Finish or discard your open draft before opening a result.',
-                            );
-                          } else changeOpen(false);
+              ) : (
+                <>
+                  {error && (
+                    <div className={styles.notice} role="alert">
+                      <p>{error}</p>
+                      <Button
+                        variant="outline"
+                        disabled={loading}
+                        onClick={() => {
+                          if (results.length && cursor) void more();
+                          else setRetry((value) => value + 1);
                         }}
                       >
-                        <div className={styles.resultBody}>
-                          <div className={styles.meta}>
-                            <span>{labels[hit.type]}</span>
-                            <span>{hit.status}</span>
-                          </div>
-                          <strong>{hit.title}</strong>
-                          {hit.snippet && <p>{hit.snippet}</p>}
-                          <small>
-                            Added{' '}
-                            {new Intl.DateTimeFormat(undefined, {
-                              dateStyle: 'medium',
-                              timeZone: household.timezone,
-                            }).format(new Date(hit.createdAt))}
-                          </small>
-                        </div>
-                        <ArrowUpRight size={18} aria-hidden="true" />
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-                {cursor && (
-                  <Button
-                    className={styles.more}
-                    variant="outline"
-                    disabled={loading}
-                    onClick={() => void more()}
+                        Try again
+                      </Button>
+                    </div>
+                  )}
+                  {searched && !loading && !error && results.length === 0 && (
+                    <p className={styles.empty}>
+                      No matches. Try a shorter phrase or another record type.
+                    </p>
+                  )}
+                  <ul
+                    ref={list}
+                    className={styles.list}
+                    aria-label="Search results"
+                    onKeyDown={(event) => {
+                      if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+                      const links = Array.from(
+                        list.current?.querySelectorAll<HTMLAnchorElement>(
+                          'a',
+                        ) ?? [],
+                      );
+                      const index = links.indexOf(
+                        document.activeElement as HTMLAnchorElement,
+                      );
+                      if (index < 0) return;
+                      event.preventDefault();
+                      if (event.key === 'ArrowUp' && index === 0)
+                        input.current?.focus();
+                      else
+                        links[
+                          Math.min(
+                            links.length - 1,
+                            Math.max(
+                              0,
+                              index + (event.key === 'ArrowDown' ? 1 : -1),
+                            ),
+                          )
+                        ]?.focus();
+                    }}
                   >
-                    {loading ? 'Loading…' : 'Load more results'}
-                  </Button>
-                )}
-              </>
-            )}
-          </div>
+                    {results.map((hit) => {
+                      const Icon = icons[hit.type];
+                      return (
+                        <li key={`${hit.type}:${hit.id}`}>
+                          <Link
+                            href={hit.href}
+                            className={styles.result}
+                            aria-disabled={pending || undefined}
+                            onClick={(event) => {
+                              if (hasPendingWork()) {
+                                event.preventDefault();
+                                setError(
+                                  'Finish or discard your open draft before opening a result.',
+                                );
+                              } else changeOpen(false);
+                            }}
+                          >
+                            <span className={styles.categoryIcon}>
+                              <Icon size={19} aria-hidden="true" />
+                            </span>
+                            <div className={styles.resultBody}>
+                              <strong>{hit.title}</strong>
+                              <div className={styles.meta}>
+                                <span>{labels[hit.type]}</span>
+                                <span>{hit.status}</span>
+                              </div>
+                              {hit.snippet && <p>{hit.snippet}</p>}
+                            </div>
+                            <time
+                              className={styles.date}
+                              dateTime={hit.createdAt}
+                              title={`Added ${dateFormatter.format(new Date(hit.createdAt))}`}
+                            >
+                              {shortDateFormatter.format(
+                                new Date(hit.createdAt),
+                              )}
+                            </time>
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {cursor && (
+                    <Button
+                      className={styles.more}
+                      variant="outline"
+                      disabled={loading}
+                      onClick={() => void more()}
+                    >
+                      {loading ? 'Loading…' : 'Load more results'}
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>

@@ -85,6 +85,7 @@ test('keyboard shortcut opens a focused accessible dialog; reads start only afte
   await waitFor(() => expect(document.activeElement).toBe(input));
   expect(api.searchHousehold).not.toHaveBeenCalled();
   await user.type(input, 'r');
+  expect(screen.getByText('Type at least 2 characters.')).toBeTruthy();
   await act(async () => new Promise((resolve) => setTimeout(resolve, 330)));
   expect(api.searchHousehold).not.toHaveBeenCalled();
   await user.type(input, 'ent');
@@ -98,6 +99,11 @@ test('keyboard shortcut opens a focused accessible dialog; reads start only afte
     rules: { 'color-contrast': { enabled: false }, region: { enabled: false } },
   });
   expect(result.violations).toEqual([]);
+  await user.click(screen.getByRole('button', { name: 'Clear search' }));
+  expect((input as HTMLInputElement).value).toBe('');
+  expect(document.activeElement).toBe(input);
+  expect(screen.queryByText('October rent')).toBeNull();
+  expect(screen.queryByText('Type at least 2 characters.')).toBeNull();
   await user.keyboard('{Escape}');
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(document.activeElement).toBe(trigger);

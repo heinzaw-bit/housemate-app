@@ -4,6 +4,16 @@ Independent Next.js web client for HouseMate, published as [heinzaw-bit/housemat
 
 ## Current slice
 
+Header controls use matching 44px touch targets, outline icons, accessible
+labels and theme-aware colors. Notifications and Theme are plain icons; Account
+and Search retain soft circular backgrounds. Search sits beside the page
+breadcrumb on desktop and beside the brand on phones. Search uses
+one focus outline around its input row. The account identity appears inside its
+menu. Phone headers keep safe-area side
+padding. Up to 900px, a two-column header keeps logo/search on the left and
+other controls on the right. Up to 650px, the mascot replaces the full wordmark
+to keep every 44px control on one row, including with larger text settings.
+
 Signed-out visitors at `/` see a public landing page with feature highlights,
 setup steps, an interactive Home/Money/House tour, FAQ and a privacy overview.
 Six sections follow the natural page scroll, with header links to jump directly
@@ -25,7 +35,8 @@ approved legal privacy policy. No support address is invented.
 - Responsive sign-in screen with Google OAuth and email magic link through Supabase Auth.
 - Household creation and single-use shareable invite joining, with USD or THB selection and timezone.
 - API-backed identity and household creation/listing/selection.
-- Global household Search beside the notification bell (Ctrl/Command + K) opens a keyboard-accessible dialog with nine record types, literal text/type filters, newest-first cursor pages and exact record links. Queries require at least two characters, remain only in the open dialog’s memory, and never contact AI. Close/scope/query/filter/offline changes discard results; stale responses cannot cross scopes. Drafts block result navigation. Requires the API search contract and runtime to be released before this client.
+- Global household Search in the header (Ctrl/Command + K) opens a keyboard-accessible dialog with nine record types, literal text/type filters, newest-first cursor pages and exact record links. Queries require at least two characters, remain only in the open dialog’s memory, and never contact AI. Close/scope/query/filter/offline changes discard results; stale responses cannot cross scopes. Drafts block result navigation. Requires the API search contract and runtime to be released before this client.
+- Search starts as a compact panel with a focused input, a small All records selector and contextual minimum-length guidance. Results use category icons, short previews, status and subtle dates. On phones, a bottom sheet keeps the input/filter above scrollable results and adjusts to the visible viewport/keyboard. Clear search restores input focus; real phone keyboard/visual acceptance remains separate from automated checks.
 - Profile uses a compact identity header and My profile / Household / Preferences sections. Saved name and household summaries open explicit Edit/Save/Cancel forms, with draft-protected navigation and reloads. Household timezone search filters supported options; currency remains subject to the existing owner/activity rules. Members show names/roles, owner role changes require review and confirmation, and invitation history is expandable. Preferences offers appearance, a direct household-scoped notification settings link, and installation help. Preview shares this layout with household reads/writes disabled.
 - API-backed shared expense list, detail, and add flow on Money. Active members can choose a payer and selected participants, preview equal/exact/percentage/ratio shares, then confirm. Failed confirmations keep the form and retry key so retrying does not create a duplicate.
 - API-backed bill list, detail, and add flow on Money. The form proceeds through Details, Split and adjustments, and Review. Enter provider, billing period, due date, provider payment status, selected base participants, and any explicitly classified personal or shared charges and credits. The API preview shows the shared remainder and final shares before confirmation. The bill-level Unpaid/Paid control records provider payment manually; it does not process money or track each member's repayment.

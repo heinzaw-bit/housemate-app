@@ -205,16 +205,24 @@ export function Workspace({
 
       <div className="main-area">
         <header className="topbar">
-          <div className="mobile-brand">
-            <Brand />
-          </div>
-          <div className="topbar-location">
-            <span className="topbar-breadcrumb">HOUSEMATE</span>
-            <span className="topbar-slash">/</span>
-            <span>
-              {navItems.find((item) => item.section === section)?.label ??
-                'Notifications'}
-            </span>
+          <div className="topbar-context">
+            <div className="mobile-brand">
+              <Brand />
+            </div>
+            <div className="topbar-location">
+              <span className="topbar-breadcrumb">HOUSEMATE</span>
+              <span className="topbar-slash">/</span>
+              <span>
+                {navItems.find((item) => item.section === section)?.label ??
+                  'Notifications'}
+              </span>
+            </div>
+            <HouseholdSearch
+              key={`${me.id}:${household.id}`}
+              token={preview ? undefined : token}
+              household={household}
+              disabled={signingOut || switchingAccount}
+            />
           </div>
           <div className="topbar-actions">
             <span className="topbar-date">
@@ -224,12 +232,6 @@ export function Workspace({
                 day: 'numeric',
               }).format(new Date())}
             </span>
-            <HouseholdSearch
-              key={`${me.id}:${household.id}`}
-              token={preview ? undefined : token}
-              household={household}
-              disabled={signingOut || switchingAccount}
-            />
             {token && !preview ? (
               <NotificationBell
                 key={`${me.id}:${household.id}`}
@@ -238,13 +240,15 @@ export function Workspace({
                 accountId={me.id}
               />
             ) : (
-              <span
-                className="topbar-bell"
-                aria-hidden="true"
+              <button
+                type="button"
+                className="header-icon-button header-icon-button-plain"
+                disabled
+                aria-label="Notifications unavailable in preview"
                 title="Notifications are available in the signed-in app"
               >
-                <Bell size={19} />
-              </span>
+                <Bell size={20} strokeWidth={2} aria-hidden="true" />
+              </button>
             )}
             <ThemeToggle />
             <AccountMenu

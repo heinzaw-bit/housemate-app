@@ -147,7 +147,7 @@ export function NotificationBell({
     <>
       <Link
         href={`/notifications?household=${encodeURIComponent(householdId)}`}
-        className="relative inline-flex size-9 items-center justify-center rounded-full hover:bg-muted"
+        className="header-icon-button header-icon-button-plain"
         aria-label={
           error
             ? 'Notifications; unread count unavailable'
@@ -155,9 +155,9 @@ export function NotificationBell({
         }
         title={error ? 'Open inbox to retry' : 'Notifications'}
       >
-        <Bell size={19} aria-hidden="true" />
+        <Bell size={20} strokeWidth={2} aria-hidden="true" />
         {!!count && (
-          <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] font-semibold text-primary-foreground">
+          <span className="absolute right-0 top-0 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] font-semibold text-primary-foreground">
             {count > 99 ? '99+' : count}
           </span>
         )}
