@@ -1,8 +1,7 @@
 'use client';
-import Link from 'next/link';
+import { Bell, ChevronDown, Moon, RefreshCw, Smartphone } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   ApiRequestError,
@@ -29,6 +28,7 @@ import {
   localPushDevice,
   supportsWebPush,
 } from '@/lib/web-push';
+import { NotificationInbox } from './notification-inbox';
 
 export function NotificationWorkspace({
   token,
@@ -44,6 +44,9 @@ export function NotificationWorkspace({
     if (new URLSearchParams(window.location.search).get('view') === 'settings')
       setView('settings');
   }, []);
+  const [settingsPending, setSettingsPending] = useState<'busy' | 'dirty' | ''>(
+    '',
+  );
   const [scope, setScope] = useState<'all' | 'unread'>('all');
   const [records, setRecords] = useState<NotificationItem[]>([]);
   const [unread, setUnread] = useState(0);
@@ -168,34 +171,60 @@ export function NotificationWorkspace({
       setReading('');
     }
   }
+  function changeView(next: 'inbox' | 'settings') {
+    if (view === next) return;
+    if (view === 'settings' && settingsPending === 'busy') return;
+    if (
+      view === 'settings' &&
+      settingsPending === 'dirty' &&
+      !window.confirm(
+        'Leave notification settings and discard any unsaved changes?',
+      )
+    )
+      return;
+    setView(next);
+  }
   return (
-    <div className="content-inner space-y-5 pt-5">
-      <div className="page-heading-row">
+    <div className="content-inner notification-workspace">
+      <div className="notification-page-heading">
         <div>
-          <span className="eyebrow">STAY IN THE LOOP</span>
-          <h1>Notifications</h1>
-          <p>Your updates and reminders for {household.name}.</p>
+          <h1>
+            Notifications{' '}
+            {unread > 0 && (
+              <span className="notification-count">
+                {unread}
+                <span className="sr-only"> unread</span>
+              </span>
+            )}
+          </h1>
+          <p>Updates for {household.name}.</p>
         </div>
-        <Button
-          variant="outline"
-          disabled={loading}
-          onClick={() => void refresh()}
-        >
-          Refresh inbox
-        </Button>
+        {view === 'inbox' && (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Refresh inbox"
+            title="Refresh inbox"
+            disabled={loading || loadingMore}
+            onClick={() => void refresh()}
+          >
+            <RefreshCw size={19} aria-hidden="true" />
+          </Button>
+        )}
       </div>
-      <nav aria-label="Notification sections" className="flex gap-2">
+      <nav aria-label="Notification sections" className="notification-tabs">
         <Button
-          variant={view === 'inbox' ? 'default' : 'outline'}
+          variant="ghost"
           aria-pressed={view === 'inbox'}
-          onClick={() => setView('inbox')}
+          disabled={settingsPending === 'busy'}
+          onClick={() => changeView('inbox')}
         >
-          Inbox{unread ? ` (${unread})` : ''}
+          Inbox
         </Button>
         <Button
-          variant={view === 'settings' ? 'default' : 'outline'}
+          variant="ghost"
           aria-pressed={view === 'settings'}
-          onClick={() => setView('settings')}
+          onClick={() => changeView('settings')}
         >
           Settings
         </Button>
@@ -205,125 +234,24 @@ export function NotificationWorkspace({
           token={token}
           household={household}
           accountId={accountId}
+          onPendingChange={setSettingsPending}
         />
       ) : (
-        <Card>
-          <CardHeader>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle>Your inbox</CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!!reading || !unread || !records.length}
-                onClick={() => void mark(records[0].id, true)}
-              >
-                {reading ? 'Saving…' : 'Mark all read'}
-              </Button>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant={scope === 'all' ? 'default' : 'outline'}
-                aria-pressed={scope === 'all'}
-                onClick={() => setScope('all')}
-              >
-                All
-              </Button>
-              <Button
-                size="sm"
-                variant={scope === 'unread' ? 'default' : 'outline'}
-                aria-pressed={scope === 'unread'}
-                onClick={() => setScope('unread')}
-              >
-                Unread
-              </Button>
-            </div>
-            {updatedAt && (
-              <p className="text-xs text-muted-foreground">
-                Updated {new Date(updatedAt).toLocaleTimeString()} · Refreshes
-                while visible.
-              </p>
-            )}
-          </CardHeader>
-          <CardContent>
-            {error && (
-              <p
-                role="alert"
-                className="mb-3 rounded-xl bg-destructive/10 p-3 text-destructive"
-              >
-                {error}
-                {updatedAt ? ' The last view may be out of date.' : ''}
-              </p>
-            )}
-            {loading && <p role="status">Loading notifications…</p>}
-            {!loading && !error && !records.length && (
-              <p className="py-8 text-center text-muted-foreground">
-                {scope === 'unread'
-                  ? 'You’re caught up.'
-                  : 'No notifications yet. New household activity and due reminders will appear here.'}
-              </p>
-            )}
-            <ul className="space-y-3">
-              {records.map((item) => (
-                <li
-                  key={item.id}
-                  className={`history-row rounded-xl border p-4 ${item.readAt ? 'border-border' : 'border-primary/40 bg-primary/5'}`}
-                >
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span className="capitalize">
-                      {item.category} · {item.priority}
-                    </span>
-                    {!item.readAt && (
-                      <strong className="text-primary">Unread</strong>
-                    )}
-                    <time dateTime={item.createdAt}>
-                      {new Intl.DateTimeFormat('en', {
-                        timeZone: household.timezone,
-                        dateStyle: 'medium',
-                        timeStyle: 'short',
-                      }).format(new Date(item.createdAt))}
-                    </time>
-                  </div>
-                  <h3 className="mt-1 font-semibold">{item.title}</h3>
-                  <p className="mt-1 break-words text-sm text-muted-foreground">
-                    {item.body}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-3">
-                    <Link
-                      href={item.href}
-                      onClick={() => {
-                        if (!item.readAt) void mark(item.id);
-                      }}
-                      className="text-sm font-medium text-primary underline underline-offset-4"
-                    >
-                      Open related item
-                    </Link>
-                    {!item.readAt && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={!!reading}
-                        onClick={() => void mark(item.id)}
-                      >
-                        Mark read
-                      </Button>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-            {cursor && (
-              <Button
-                className="mt-4"
-                variant="outline"
-                disabled={loadingMore || loading}
-                onClick={() => void more()}
-              >
-                {loadingMore ? 'Loading…' : 'Load older notifications'}
-              </Button>
-            )}
-          </CardContent>
-        </Card>
+        <NotificationInbox
+          household={household}
+          records={records}
+          unread={unread}
+          scope={scope}
+          setScope={setScope}
+          loading={loading}
+          loadingMore={loadingMore}
+          reading={reading}
+          error={error}
+          updatedAt={updatedAt}
+          cursor={cursor}
+          mark={mark}
+          more={more}
+        />
       )}
     </div>
   );
@@ -333,10 +261,12 @@ function NotificationSettings({
   token,
   household,
   accountId,
+  onPendingChange,
 }: {
   token: string;
   household: Household;
   accountId: string;
+  onPendingChange: (pending: 'busy' | 'dirty' | '') => void;
 }) {
   const [preferences, setPreferences] =
     useState<NotificationPreferences | null>(null);
@@ -351,43 +281,51 @@ function NotificationSettings({
   const [saving, setSaving] = useState(false);
   const [working, setWorking] = useState(false);
   const [savedPreferences, setSavedPreferences] = useState('');
-  useLeaveGuard(
-    saving ||
-      working ||
-      (preferences !== null &&
-        JSON.stringify(preferences) !== savedPreferences),
-  );
+  const dirty =
+    preferences !== null && JSON.stringify(preferences) !== savedPreferences;
+  useLeaveGuard(saving || working || dirty);
+  useEffect(() => {
+    onPendingChange(saving || working ? 'busy' : dirty ? 'dirty' : '');
+    return () => onPendingChange('');
+  }, [saving, working, dirty, onPendingChange]);
   const request = useRef(0);
-  const load = useCallback(async () => {
-    const id = ++request.current;
-    const results = await Promise.allSettled([
-      getNotificationPreferences(token, household.id),
-      getPushConfig(token),
-      getPushDevices(token),
-    ]);
-    if (id !== request.current) return;
-    if (results[0].status === 'fulfilled') {
-      setPreferences(results[0].value);
-      setSavedPreferences(JSON.stringify(results[0].value));
-      setError('');
-    } else
-      setError(
-        results[0].reason instanceof Error
-          ? results[0].reason.message
-          : 'Could not load preferences.',
+  const load = useCallback(
+    async (resetPreferences = true) => {
+      const id = ++request.current;
+      const results = await Promise.allSettled([
+        getNotificationPreferences(token, household.id),
+        getPushConfig(token),
+        getPushDevices(token),
+      ]);
+      if (id !== request.current) return;
+      if (results[0].status === 'fulfilled' && resetPreferences) {
+        setPreferences(results[0].value);
+        setSavedPreferences(JSON.stringify(results[0].value));
+        setError('');
+      } else if (results[0].status === 'rejected' && resetPreferences)
+        setError(
+          results[0].reason instanceof Error
+            ? results[0].reason.message
+            : 'Could not load preferences.',
+        );
+      if (results[1].status === 'fulfilled') setConfig(results[1].value);
+      if (results[2].status === 'fulfilled') setDevices(results[2].value);
+      const failed = results
+        .slice(1)
+        .find((result) => result.status === 'rejected');
+      setPushError(
+        failed?.status === 'rejected'
+          ? 'Could not check push setup or devices. Retry to refresh.'
+          : '',
       );
-    if (results[1].status === 'fulfilled') setConfig(results[1].value);
-    if (results[2].status === 'fulfilled') setDevices(results[2].value);
-    const failed = results
-      .slice(1)
-      .find((result) => result.status === 'rejected');
-    setPushError(
-      failed?.status === 'rejected'
-        ? 'Could not check push setup or devices. Retry to refresh.'
-        : '',
-    );
-    setLocalId(localPushDevice()?.id ?? '');
-  }, [token, household.id]);
+      const local = localPushDevice();
+      setLocalId(local?.accountId === accountId ? local.id : '');
+      setPermission(
+        'Notification' in window ? Notification.permission : 'unsupported',
+      );
+    },
+    [token, household.id, accountId],
+  );
   useEffect(() => {
     setSupported(supportsWebPush());
     setPermission(
@@ -400,7 +338,7 @@ function NotificationSettings({
   }, [load]);
   async function save(event: React.FormEvent) {
     event.preventDefault();
-    if (!preferences) return;
+    if (!preferences || saving || !dirty) return;
     setSaving(true);
     setError('');
     setNotice('');
@@ -411,9 +349,7 @@ function NotificationSettings({
       });
       setPreferences(next);
       setSavedPreferences(JSON.stringify(next));
-      setNotice(
-        'Notification preferences saved. Existing inbox history stays available.',
-      );
+      setNotice('Preferences saved.');
     } catch (failure) {
       setError(
         failure instanceof Error
@@ -438,9 +374,7 @@ function NotificationSettings({
       setLocalId(device.id);
       setDevices(await getPushDevices(token));
       setPermission(Notification.permission);
-      setNotice(
-        'Web push enabled for this browser. You’ll receive future updates according to each household’s preferences.',
-      );
+      setNotice('Notifications enabled for this device.');
     } catch (failure) {
       setPushError(
         failure instanceof Error
@@ -461,7 +395,7 @@ function NotificationSettings({
         setLocalId('');
       } else await disablePushDevice(token, id);
       setDevices(await getPushDevices(token));
-      setNotice('Push disabled for that device. Your inbox still works.');
+      setNotice('Device notifications turned off. Your inbox still works.');
     } catch (failure) {
       setPushError(
         failure instanceof Error
@@ -472,237 +406,387 @@ function NotificationSettings({
       setWorking(false);
     }
   }
+  const currentDevice = devices.find((device) => device.id === localId);
+  const pushEnabled = !!currentDevice?.enabled && permission === 'granted';
+  const pushKnown = config !== null && !pushError;
+  const inboxCount = preferences
+    ? notificationCategories.filter(
+        (category) => preferences.categories[category].inApp,
+      ).length
+    : 0;
+  const pushCount = preferences
+    ? notificationCategories.filter(
+        (category) => preferences.categories[category].webPush,
+      ).length
+    : 0;
+  const pushStatus = !pushKnown
+    ? pushError
+      ? 'Device status unavailable'
+      : 'Checking device'
+    : !supported
+      ? 'Installation may be needed'
+      : permission === 'denied'
+        ? 'Blocked in device settings'
+        : !config.enabled
+          ? 'Unavailable right now'
+          : pushEnabled
+            ? 'On for this device'
+            : 'Off for this device';
   return (
-    <div className="space-y-4">
+    <form
+      onSubmit={(event) => void save(event)}
+      className="notification-settings"
+    >
       {notice && (
-        <p role="status" className="rounded-xl bg-primary/10 p-3 text-primary">
+        <p role="status" className="notification-notice">
           {notice}
         </p>
       )}
-      <Card>
-        <CardHeader>
-          <CardTitle>Updates for this household</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Choose which new updates enter your inbox and which may reach
-            enabled push devices. Shopping push is off by default.
-          </p>
-        </CardHeader>
-        <CardContent>
-          {error && (
-            <p role="alert" className="mb-3 text-destructive">
-              {error}
-            </p>
-          )}
-          {!preferences ? (
-            <Button variant="outline" onClick={() => void load()}>
-              Retry settings
+      <section
+        className="notification-settings-section"
+        aria-labelledby="device-notifications-title"
+      >
+        <div className="notification-settings-heading">
+          <span className="notification-setting-icon">
+            <Smartphone size={20} aria-hidden="true" />
+          </span>
+          <div>
+            <h2 id="device-notifications-title">Device notifications</h2>
+            <p>Get household updates while HouseMate is closed.</p>
+          </div>
+        </div>
+        <div className="notification-device-status">
+          <span
+            className={`notification-status-dot ${pushEnabled && pushKnown ? 'is-on' : ''}`}
+            aria-hidden="true"
+          />
+          <span>{pushStatus}</span>
+          {pushEnabled ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={working || !pushKnown}
+              onClick={() => void disable(localId)}
+            >
+              Turn off
             </Button>
           ) : (
-            <form onSubmit={(event) => void save(event)} className="space-y-5">
-              <fieldset disabled={saving}>
-                <legend className="sr-only">Notification categories</legend>
-                <div className="grid grid-cols-[minmax(0,1fr)_65px_65px] gap-2 border-b pb-2 text-sm font-medium">
-                  <span>Category</span>
-                  <span>In app</span>
-                  <span>Push</span>
-                </div>
-                {notificationCategories.map((category) => (
-                  <div
-                    key={category}
-                    className="grid grid-cols-[minmax(0,1fr)_65px_65px] items-center gap-2 border-b py-3 text-sm"
-                  >
-                    <span className="capitalize">
-                      {category === 'money' ? 'Expenses' : category}
-                    </span>
-                    {(['inApp', 'webPush'] as const).map((channel) => (
-                      <input
-                        key={channel}
-                        type="checkbox"
-                        aria-label={`${category} ${channel === 'inApp' ? 'in-app' : 'web push'} notifications`}
-                        checked={preferences.categories[category][channel]}
-                        onChange={(event) =>
-                          setPreferences({
-                            ...preferences,
-                            categories: {
-                              ...preferences.categories,
-                              [category]: {
-                                ...preferences.categories[category],
-                                [channel]: event.target.checked,
-                              },
-                            },
-                          })
-                        }
-                      />
-                    ))}
-                  </div>
-                ))}
-              </fieldset>
-              <fieldset disabled={saving} className="space-y-3">
-                <legend className="font-medium">
-                  Quiet hours ({preferences.timezone})
-                </legend>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={preferences.quietHours.enabled}
-                    onChange={(event) =>
-                      setPreferences({
-                        ...preferences,
-                        quietHours: {
-                          ...preferences.quietHours,
-                          enabled: event.target.checked,
-                        },
-                      })
-                    }
-                  />
-                  Delay push during quiet hours
-                </label>
-                <div className="grid max-w-sm grid-cols-2 gap-3">
-                  <label htmlFor="quiet-start" className="space-y-1 text-sm">
-                    Start
-                    <Input
-                      id="quiet-start"
-                      type="time"
-                      required
-                      value={preferences.quietHours.start}
-                      onChange={(event) =>
-                        setPreferences({
-                          ...preferences,
-                          quietHours: {
-                            ...preferences.quietHours,
-                            start: event.target.value,
-                          },
-                        })
-                      }
-                    />
-                  </label>
-                  <label htmlFor="quiet-end" className="space-y-1 text-sm">
-                    End
-                    <Input
-                      id="quiet-end"
-                      type="time"
-                      required
-                      value={preferences.quietHours.end}
-                      onChange={(event) =>
-                        setPreferences({
-                          ...preferences,
-                          quietHours: {
-                            ...preferences.quietHours,
-                            end: event.target.value,
-                          },
-                        })
-                      }
-                    />
-                  </label>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  All priorities respect quiet hours. Relevant unread updates
-                  wait until quiet hours end; expired or already resolved
-                  reminders are skipped. The inbox stays available.
-                </p>
-              </fieldset>
-              <Button type="submit" disabled={saving}>
-                {saving ? 'Saving…' : 'Save preferences'}
-              </Button>
-            </form>
-          )}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Web push</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Get notified when bills are due, meals need your reply, or chores
-            are assigned—even while HouseMate is closed. Push messages contain a
-            generic update and a link, without amounts, household names, or
-            private message text.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {pushError && (
-            <p role="alert" className="text-destructive">
-              {pushError}
-            </p>
-          )}
-          {!supported && (
-            <p className="text-sm text-muted-foreground">
-              This browser cannot use push here. Use a supported browser on
-              HTTPS or localhost; some phones require installing the app first.
-            </p>
-          )}
-          {permission === 'denied' && (
-            <p className="text-sm text-muted-foreground">
-              Notifications are blocked. You can allow them in your browser’s
-              site settings. No permission request will open automatically.
-            </p>
-          )}
-          {config && !config.enabled && (
-            <p className="rounded-xl bg-muted p-3 text-sm">
-              Web push needs server setup: a real public contact email or HTTPS
-              support URL. Your in-app inbox and reminder feed are available
-              now.
-            </p>
-          )}
-          <div className="flex flex-wrap gap-2">
             <Button
+              type="button"
               disabled={
                 working ||
+                !pushKnown ||
                 !supported ||
                 !config?.enabled ||
                 permission === 'denied'
               }
               onClick={() => void enable()}
             >
-              Enable push in this browser
+              {working ? 'Updating…' : 'Enable notifications'}
             </Button>
-            <Button
-              variant="outline"
-              disabled={working}
-              onClick={() => void load()}
-            >
-              Refresh settings and devices
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Devices are attached to your account across households. Category
-            choices and quiet hours apply separately to each household. Signing
-            out removes this browser’s subscription.
+          )}
+        </div>
+        {pushError && (
+          <p role="alert" className="notification-alert">
+            {pushError}
           </p>
-          <ul className="space-y-2">
-            {devices.map((device, index) => (
-              <li
-                key={device.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 text-sm"
+        )}
+        {!supported && (
+          <p className="notification-help">
+            On iPhone, add HouseMate to your Home Screen in Safari, then open it
+            from its icon. Other devices need a supported browser and a secure
+            connection.
+          </p>
+        )}
+        {permission === 'denied' && (
+          <p className="notification-help">
+            Allow HouseMate notifications in your browser or phone settings,
+            then check this device again.
+          </p>
+        )}
+        {config && !config.enabled && (
+          <p className="notification-help">
+            Device notifications are unavailable right now. Your inbox still
+            works.
+          </p>
+        )}
+        {currentDevice?.lastError && (
+          <p className="notification-help">
+            A recent delivery failed. If notifications stopped, turn them off
+            and enable them again.
+          </p>
+        )}
+        <details className="notification-disclosure">
+          <summary>
+            Manage devices <ChevronDown size={16} aria-hidden="true" />
+          </summary>
+          <div className="notification-disclosure-content">
+            <p className="notification-help">
+              Devices belong to your account across households. Signing out
+              disconnects this device.
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={working}
+              onClick={() => void load(false)}
+            >
+              <RefreshCw size={15} aria-hidden="true" />
+              Check devices
+            </Button>
+            {!devices.length && (
+              <p className="notification-help">
+                No registered devices
+                {pushError ? ' could be checked.' : ' yet.'}
+              </p>
+            )}
+            <ul className="notification-devices">
+              {devices.map((device, index) => (
+                <li key={device.id}>
+                  <div>
+                    <strong>
+                      {device.id === localId
+                        ? 'This device'
+                        : `Device ${index + 1}`}
+                    </strong>
+                    <p>
+                      {device.enabled ? 'On' : 'Off'} · Added{' '}
+                      {new Date(device.createdAt).toLocaleDateString()}
+                      {device.lastError ? ' · Delivery issue' : ''}
+                    </p>
+                  </div>
+                  {device.enabled && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={working}
+                      onClick={() => void disable(device.id)}
+                    >
+                      Turn off
+                      <span className="sr-only">
+                        {' '}
+                        {device.id === localId
+                          ? 'this device'
+                          : `Device ${index + 1}`}
+                      </span>
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <p className="notification-help">
+              Push messages use generic text to keep household details private.
+            </p>
+          </div>
+        </details>
+      </section>
+      <section
+        className="notification-settings-section"
+        aria-labelledby="choose-updates-title"
+      >
+        <div className="notification-settings-heading">
+          <span className="notification-setting-icon">
+            <Bell size={20} aria-hidden="true" />
+          </span>
+          <div>
+            <h2 id="choose-updates-title">Choose updates</h2>
+            <p>
+              For {household.name}. Other households have their own preferences.
+            </p>
+          </div>
+        </div>
+        {error && (
+          <p role="alert" className="notification-alert">
+            {error}
+          </p>
+        )}
+        {!preferences ? (
+          <div className="notification-preferences-loading">
+            <p role="status">
+              {error ? 'Settings could not be loaded.' : 'Loading preferences…'}
+            </p>
+            {error && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void load()}
               >
-                <div>
-                  <strong>
-                    {device.id === localId
-                      ? 'This browser'
-                      : `Device ${index + 1}`}
-                  </strong>
-                  <p className="text-muted-foreground">
-                    {device.enabled ? 'Enabled' : 'Disabled'} · Added{' '}
-                    {new Date(device.createdAt).toLocaleDateString()}
-                    {device.lastError
-                      ? ' · Delivery failed; enable again if the subscription expired.'
-                      : ''}
-                  </p>
+                Retry settings
+              </Button>
+            )}
+          </div>
+        ) : (
+          <details className="notification-disclosure">
+            <summary>
+              <span>
+                {inboxCount} inbox · {pushCount} push categories
+              </span>
+              <span className="notification-disclosure-label">
+                Edit <ChevronDown size={16} aria-hidden="true" />
+              </span>
+            </summary>
+            <fieldset
+              disabled={saving}
+              className="notification-disclosure-content"
+            >
+              <legend className="sr-only">
+                Notification categories for {household.name}
+              </legend>
+              <div className="notification-category-heading">
+                <span>Update</span>
+                <span>Inbox</span>
+                <span>Push</span>
+              </div>
+              {notificationCategories.map((category) => (
+                <div key={category} className="notification-category-row">
+                  <span>{category === 'money' ? 'Expenses' : category}</span>
+                  {(['inApp', 'webPush'] as const).map((channel) => (
+                    <NotificationSwitch
+                      key={channel}
+                      label={`${category === 'money' ? 'Expenses' : category} ${channel === 'inApp' ? 'inbox' : 'push'} notifications`}
+                      checked={preferences.categories[category][channel]}
+                      onChange={(checked) =>
+                        setPreferences({
+                          ...preferences,
+                          categories: {
+                            ...preferences.categories,
+                            [category]: {
+                              ...preferences.categories[category],
+                              [channel]: checked,
+                            },
+                          },
+                        })
+                      }
+                    />
+                  ))}
                 </div>
-                {device.enabled && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={working}
-                    onClick={() => void disable(device.id)}
-                  >
-                    Disable
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
-    </div>
+              ))}
+              <p className="notification-help">
+                Inbox keeps updates here. Push sends them to enabled devices.
+                Existing inbox history stays available.
+              </p>
+            </fieldset>
+          </details>
+        )}
+      </section>
+      <section
+        className="notification-settings-section"
+        aria-labelledby="quiet-hours-title"
+      >
+        <div className="notification-settings-heading">
+          <span className="notification-setting-icon">
+            <Moon size={20} aria-hidden="true" />
+          </span>
+          <div>
+            <h2 id="quiet-hours-title">Quiet hours</h2>
+            <p>
+              {preferences?.quietHours.enabled
+                ? `Push pauses from ${preferences.quietHours.start} to ${preferences.quietHours.end}.`
+                : 'Choose when device notifications should pause.'}
+            </p>
+          </div>
+          {preferences && (
+            <NotificationSwitch
+              label="Enable quiet hours"
+              disabled={saving}
+              checked={preferences.quietHours.enabled}
+              onChange={(checked) =>
+                setPreferences({
+                  ...preferences,
+                  quietHours: { ...preferences.quietHours, enabled: checked },
+                })
+              }
+            />
+          )}
+        </div>
+        {preferences?.quietHours.enabled && (
+          <fieldset disabled={saving} className="notification-quiet-times">
+            <legend className="sr-only">Quiet hour times</legend>
+            <label htmlFor="quiet-start">
+              From
+              <Input
+                id="quiet-start"
+                type="time"
+                required
+                value={preferences.quietHours.start}
+                onChange={(event) =>
+                  setPreferences({
+                    ...preferences,
+                    quietHours: {
+                      ...preferences.quietHours,
+                      start: event.target.value,
+                    },
+                  })
+                }
+              />
+            </label>
+            <label htmlFor="quiet-end">
+              Until
+              <Input
+                id="quiet-end"
+                type="time"
+                required
+                value={preferences.quietHours.end}
+                onChange={(event) =>
+                  setPreferences({
+                    ...preferences,
+                    quietHours: {
+                      ...preferences.quietHours,
+                      end: event.target.value,
+                    },
+                  })
+                }
+              />
+            </label>
+            <p className="notification-help">
+              {preferences.timezone} · All priorities pause. Your inbox stays
+              available; eligible updates resume after quiet hours.
+            </p>
+          </fieldset>
+        )}
+      </section>
+      {preferences && (
+        <div className="notification-settings-footer">
+          <p role="status">
+            {saving
+              ? 'Saving your preferences…'
+              : dirty
+                ? 'You have unsaved changes.'
+                : 'Your preferences are up to date.'}
+          </p>
+          <Button type="submit" disabled={saving || !dirty}>
+            {saving ? 'Saving…' : 'Save changes'}
+          </Button>
+        </div>
+      )}
+    </form>
+  );
+}
+
+function NotificationSwitch({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="notification-switch">
+      <input
+        type="checkbox"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span aria-hidden="true" />
+    </label>
   );
 }

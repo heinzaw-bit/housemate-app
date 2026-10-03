@@ -520,7 +520,7 @@ for (const [name, element] of [
         await userEvent
           .setup()
           .click(screen.getByRole('button', { name: 'Settings' }));
-        await screen.findByRole('button', { name: 'Save preferences' });
+        await screen.findByRole('button', { name: 'Save changes' });
       }
       await checkStructure(container);
     },
