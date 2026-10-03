@@ -1,20 +1,21 @@
 .trigger {
   width: 100%;
-  min-height: 72px;
+  min-height: 56px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--sidebar-border);
-  border-radius: 16px;
-  background: var(--sidebar-accent);
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
   color: var(--sidebar-foreground);
   text-align: left;
   cursor: pointer;
+  transition: background-color 150ms;
 }
 .trigger:hover,
 .trigger[data-popup-open] {
-  background: var(--secondary);
+  background: var(--sidebar-accent);
 }
 .trigger:focus-visible,
 .item:focus-visible,
@@ -30,30 +31,26 @@
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  background: var(--background);
-  color: var(--primary);
-  font-weight: 800;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
+  font-size: 14px;
+  font-weight: 700;
 }
 .identity {
-  display: grid;
-  gap: 3px;
+  display: block;
   min-width: 0;
   flex: 1;
 }
-.label {
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.11em;
-  color: var(--muted-foreground);
-}
 .identity strong {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 14px;
+  font-weight: 600;
 }
 .chevron {
   flex-shrink: 0;
@@ -216,6 +213,7 @@
   flex-wrap: wrap;
 }
 @media (prefers-reduced-motion: reduce) {
+  .trigger,
   .chevron {
     transition: none;
   }

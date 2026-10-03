@@ -1,7 +1,8 @@
 'use client';
 
-import { ArrowRight, ChevronDown, HandCoins, ListFilter } from 'lucide-react';
-import { useCallback, useEffect, useId, useState } from 'react';
+import { ArrowRight, HandCoins, ListFilter } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { MoneyRecordPanel } from '@/components/money-record-panel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -22,7 +23,7 @@ import {
   type SettlementSuggestion,
 } from '@/lib/api';
 import { confirmationFailure } from '@/lib/financial-confirmation';
-import { useLeaveGuard } from '@/lib/pending-work';
+import { hasPendingWork, useLeaveGuard } from '@/lib/pending-work';
 
 function parseMinor(value: string): number | null {
   if (!/^\d+(?:\.\d{1,2})?$/.test(value.trim())) return null;
@@ -92,12 +93,9 @@ export function BalanceWorkspace({
   const [selectedMemberId, setSelectedMemberId] = useState('');
   const [entries, setEntries] = useState<BalanceEntry[]>([]);
   const [hasMoreEntries, setHasMoreEntries] = useState(false);
-  const [entriesExpanded, setEntriesExpanded] = useState(false);
-  const [transfersExpanded, setTransfersExpanded] = useState(false);
-  const [suggestionsExpanded, setSuggestionsExpanded] = useState(false);
-  const entriesId = useId();
-  const transfersId = useId();
-  const suggestionsId = useId();
+  const [balanceView, setBalanceView] = useState<
+    'entries' | 'suggestions' | 'transfers' | null
+  >(null);
   const [loading, setLoading] = useState(true);
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [moreBusy, setMoreBusy] = useState<'entries' | 'settlements' | null>(
@@ -105,6 +103,7 @@ export function BalanceWorkspace({
   );
   const [loadError, setLoadError] = useState('');
   const [entryError, setEntryError] = useState('');
+  const [entryRetry, setEntryRetry] = useState(0);
   const [formOpen, setFormOpen] = useState(false);
   useLeaveGuard(formOpen);
   const [direction, setDirection] = useState<'sent' | 'received'>('sent');
@@ -193,11 +192,11 @@ export function BalanceWorkspace({
   useEffect(() => {
     void load();
   }, [load]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Retry reloads the selected member's sources.
   useEffect(() => {
     if (!selectedMemberId) return;
     let current = true;
     setEntries([]);
-    setEntriesExpanded(false);
     setHasMoreEntries(false);
     setEntriesLoading(true);
     setEntryError('');
@@ -222,7 +221,7 @@ export function BalanceWorkspace({
     return () => {
       current = false;
     };
-  }, [household.id, selectedMemberId, token]);
+  }, [household.id, selectedMemberId, token, entryRetry]);
 
   function invalidate() {
     setPreview(null);
@@ -232,7 +231,8 @@ export function BalanceWorkspace({
   }
 
   function prefillSuggestion(suggestion: SettlementSuggestion) {
-    if (!summary) return;
+    if (!summary || hasPendingWork()) return;
+    setBalanceView(null);
     if (summary.viewerMemberId === suggestion.senderMemberId) {
       setDirection('sent');
       setCounterpartId(suggestion.recipientMemberId);
@@ -427,6 +427,98 @@ export function BalanceWorkspace({
       b.createdAt.localeCompare(a.createdAt) ||
       b.id.localeCompare(a.id),
   );
+
+  const renderEntries = (records: BalanceEntry[]) =>
+    records.map((entry) => (
+      <div
+        key={`${entry.sourceType}-${entry.sourceId}`}
+        className="flex items-start justify-between gap-3 border-t pt-3 text-sm"
+      >
+        <div>
+          <strong>{entry.title}</strong>
+          <p className="capitalize text-muted-foreground">
+            {entry.sourceType} · {readableDate(entry.occurredOn)}
+          </p>
+          <p className="text-muted-foreground">
+            {entryExplanation(entry, household.defaultCurrency)}
+          </p>
+        </div>
+        <strong
+          className={
+            entry.effectMinor < 0 ? 'text-destructive' : 'text-primary'
+          }
+        >
+          {entry.effectMinor < 0 ? '−' : '+'}
+          {amountText(Math.abs(entry.effectMinor), household.defaultCurrency)}
+        </strong>
+      </div>
+    ));
+  const renderSuggestions = (records: SettlementSuggestion[]) =>
+    summary
+      ? records.map((suggestion) => (
+          <div
+            key={`${suggestion.senderMemberId}-${suggestion.recipientMemberId}`}
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 text-sm"
+          >
+            <div>
+              <span className="font-medium">
+                {suggestion.senderDisplayName}
+              </span>{' '}
+              <ArrowRight size={14} className="inline" />{' '}
+              <span className="font-medium">
+                {suggestion.recipientDisplayName}
+              </span>
+              <strong className="block text-primary">
+                {amountText(suggestion.amountMinor, summary.currency)}
+              </strong>
+            </div>
+            {(summary.viewerMemberId === suggestion.senderMemberId ||
+              summary.viewerMemberId === suggestion.recipientMemberId) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => prefillSuggestion(suggestion)}
+              >
+                Record transfer
+              </Button>
+            )}
+          </div>
+        ))
+      : null;
+  const renderTransfers = (records: Settlement[], compact = false) =>
+    records.map((settlement) => (
+      <div
+        key={settlement.id}
+        className="flex flex-wrap items-start justify-between gap-3 border-t pt-3 text-sm"
+      >
+        <div>
+          <strong>
+            {settlement.senderDisplayName} → {settlement.recipientDisplayName}
+          </strong>
+          <p className="text-muted-foreground">
+            {readableDate(settlement.settledOn)}
+            {!compact && (
+              <>
+                {' '}
+                · Recorded by {settlement.recordedByDisplayName}{' '}
+                {new Intl.DateTimeFormat('en', {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                  timeZone: household.timezone,
+                }).format(new Date(settlement.createdAt))}
+              </>
+            )}
+          </p>
+          {!compact && settlement.method && (
+            <p>Method reported: {settlement.method}</p>
+          )}
+          {!compact && settlement.note && <p>Note: {settlement.note}</p>}
+        </div>
+        <strong>
+          {amountText(settlement.amountMinor, settlement.currency)}
+        </strong>
+      </div>
+    ));
   return (
     <div className="content-inner space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -509,182 +601,117 @@ export function BalanceWorkspace({
                 recorded transfer to see activity here.
               </p>
             )}
-            <div className="grid gap-5 lg:grid-cols-2">
+            <div className="grid items-start gap-5 lg:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <div className="flex items-start justify-between gap-3">
-                    <CardTitle>Why this balance?</CardTitle>
-                    {!entriesLoading &&
-                      (entries.length > 3 || hasMoreEntries) && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={
-                            entriesExpanded
-                              ? 'Show fewer balance sources'
-                              : 'Show more balance sources'
-                          }
-                          aria-expanded={entriesExpanded}
-                          aria-controls={entriesId}
-                          onClick={() => setEntriesExpanded((old) => !old)}
-                        >
-                          {entriesExpanded ? 'Show less' : 'Show more'}
-                          <ChevronDown
-                            size={16}
-                            aria-hidden="true"
-                            className={entriesExpanded ? 'rotate-180' : ''}
-                          />
-                        </Button>
-                      )}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
+                  <CardTitle>Why this balance?</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="font-medium">
                     {selected
                       ? `${selected.displayName}: ${balanceText(selected.netMinor, summary.currency)}`
                       : 'Select a member above.'}
                   </p>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {entryError && (
-                    <p role="alert" className="text-sm text-destructive">
-                      {entryError}
-                    </p>
-                  )}
-                  <div id={entriesId} className="space-y-3">
-                    {entriesLoading ? (
-                      <p className="text-sm text-muted-foreground">
-                        Loading sources…
-                      </p>
-                    ) : entries.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        No confirmed expenses, paid bills, or recorded transfers
-                        for this member.
-                      </p>
-                    ) : (
-                      entries
-                        .slice(0, entriesExpanded ? undefined : 3)
-                        .map((entry) => (
-                          <div
-                            key={`${entry.sourceType}-${entry.sourceId}`}
-                            className="flex items-start justify-between gap-3 border-t pt-3 text-sm"
-                          >
-                            <div>
-                              <strong>{entry.title}</strong>
-                              <p className="capitalize text-muted-foreground">
-                                {entry.sourceType} ·{' '}
-                                {readableDate(entry.occurredOn)}
-                              </p>
-                              <p className="text-muted-foreground">
-                                {entryExplanation(entry, summary.currency)}
-                              </p>
-                            </div>
-                            <strong
-                              className={
-                                entry.effectMinor < 0
-                                  ? 'text-destructive'
-                                  : 'text-primary'
-                              }
-                            >
-                              {entry.effectMinor < 0 ? '−' : '+'}
-                              {amountText(
-                                Math.abs(entry.effectMinor),
-                                summary.currency,
-                              )}
-                            </strong>
-                          </div>
-                        ))
-                    )}
-                    {entriesExpanded && hasMoreEntries && (
-                      <Button
-                        variant="outline"
-                        disabled={moreBusy !== null}
-                        onClick={() => void loadMoreEntries()}
-                      >
-                        {moreBusy === 'entries'
-                          ? 'Loading…'
-                          : 'Load more sources'}
-                      </Button>
-                    )}
-                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Confirmed expenses, paid bills and recorded transfers
+                    contribute to this balance.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!selected || formOpen}
+                    onClick={() => setBalanceView('entries')}
+                  >
+                    View breakdown
+                  </Button>
                 </CardContent>
               </Card>
               <Card>
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-3">
-                    <CardTitle>Suggested transfers</CardTitle>
-                    {summary.suggestions.length > 2 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={
-                          suggestionsExpanded
-                            ? 'Show fewer suggested transfers'
-                            : 'Show more suggested transfers'
-                        }
-                        aria-expanded={suggestionsExpanded}
-                        aria-controls={suggestionsId}
-                        onClick={() => setSuggestionsExpanded((old) => !old)}
-                      >
-                        {suggestionsExpanded ? 'Show less' : 'Show more'}
-                        <ChevronDown
-                          size={16}
-                          aria-hidden="true"
-                          className={suggestionsExpanded ? 'rotate-180' : ''}
-                        />
-                      </Button>
-                    )}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    These are suggestions based on current balances. No transfer
-                    happens until someone pays outside HouseMate and records it
-                    here.
-                  </p>
+                <CardHeader className="flex flex-row items-center justify-between gap-3">
+                  <CardTitle>Suggested transfers</CardTitle>
+                  {summary.suggestions.length > 2 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setBalanceView('suggestions')}
+                      disabled={formOpen}
+                    >
+                      View all suggestions
+                    </Button>
+                  )}
                 </CardHeader>
-                <CardContent id={suggestionsId} className="space-y-3">
-                  {summary.suggestions.length === 0 ? (
+                <CardContent className="space-y-3">
+                  {summary.suggestions.length ? (
+                    renderSuggestions(summary.suggestions.slice(0, 2))
+                  ) : (
                     <p className="text-sm text-muted-foreground">
                       No transfer suggested right now.
                     </p>
-                  ) : (
-                    summary.suggestions
-                      .slice(0, suggestionsExpanded ? undefined : 2)
-                      .map((suggestion) => (
-                        <div
-                          key={`${suggestion.senderMemberId}-${suggestion.recipientMemberId}`}
-                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 text-sm"
-                        >
-                          <div>
-                            <span className="font-medium">
-                              {suggestion.senderDisplayName}
-                            </span>{' '}
-                            <ArrowRight size={14} className="inline" />{' '}
-                            <span className="font-medium">
-                              {suggestion.recipientDisplayName}
-                            </span>
-                            <strong className="block text-primary">
-                              {amountText(
-                                suggestion.amountMinor,
-                                summary.currency,
-                              )}
-                            </strong>
-                          </div>
-                          {(summary.viewerMemberId ===
-                            suggestion.senderMemberId ||
-                            summary.viewerMemberId ===
-                              suggestion.recipientMemberId) && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => prefillSuggestion(suggestion)}
-                            >
-                              Record after paying
-                            </Button>
-                          )}
-                        </div>
-                      ))
                   )}
+                  <p className="text-xs text-muted-foreground">
+                    Record a transfer only after paying outside HouseMate.
+                  </p>
                 </CardContent>
               </Card>
             </div>
+            <MoneyRecordPanel
+              open={balanceView === 'entries'}
+              title="Balance breakdown"
+              onClose={() => setBalanceView(null)}
+            >
+              <div className="space-y-4">
+                <p className="font-medium">
+                  {selected?.displayName} ·{' '}
+                  {selected && balanceText(selected.netMinor, summary.currency)}
+                </p>
+                {entryError && (
+                  <div className="space-y-2">
+                    <p role="alert" className="text-destructive">
+                      {entryError}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={entriesLoading}
+                      onClick={() => setEntryRetry((value) => value + 1)}
+                    >
+                      Retry breakdown
+                    </Button>
+                  </div>
+                )}
+                {entriesLoading ? (
+                  <p role="status">Loading sources…</p>
+                ) : entries.length ? (
+                  renderEntries(entries)
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No confirmed expenses, paid bills or transfers for this
+                    member.
+                  </p>
+                )}
+                {hasMoreEntries && (
+                  <Button
+                    variant="outline"
+                    disabled={moreBusy !== null}
+                    onClick={() => void loadMoreEntries()}
+                  >
+                    {moreBusy === 'entries' ? 'Loading…' : 'Load more sources'}
+                  </Button>
+                )}
+              </div>
+            </MoneyRecordPanel>
+            <MoneyRecordPanel
+              open={balanceView === 'suggestions'}
+              title="All suggested transfers"
+              onClose={() => setBalanceView(null)}
+            >
+              <div className="space-y-3">
+                {renderSuggestions(summary.suggestions)}
+                <p className="text-xs text-muted-foreground">
+                  Record a transfer only after paying outside HouseMate.
+                </p>
+              </div>
+            </MoneyRecordPanel>
             {formOpen && (
               <Card>
                 <CardHeader>
@@ -958,91 +985,60 @@ export function BalanceWorkspace({
               </Card>
             )}
             <Card>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-3">
-                  <CardTitle>Recorded transfers</CardTitle>
-                  {(settlements.length > 3 || hasMoreSettlements) && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={
-                        transfersExpanded
-                          ? 'Show fewer recorded transfers'
-                          : 'Show more recorded transfers'
-                      }
-                      aria-expanded={transfersExpanded}
-                      aria-controls={transfersId}
-                      onClick={() => setTransfersExpanded((old) => !old)}
-                    >
-                      {transfersExpanded ? 'Show less' : 'Show more'}
-                      <ChevronDown
-                        size={16}
-                        aria-hidden="true"
-                        className={transfersExpanded ? 'rotate-180' : ''}
-                      />
-                    </Button>
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  These entries were reported by members; HouseMate did not
-                  process or verify them.
-                </p>
+              <CardHeader className="flex flex-row items-center justify-between gap-3">
+                <CardTitle>Recorded transfers</CardTitle>
+                {settlements.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setBalanceView('transfers')}
+                    disabled={formOpen}
+                  >
+                    View all transfers
+                  </Button>
+                )}
               </CardHeader>
               <CardContent className="space-y-3">
-                <div id={transfersId} className="space-y-3">
-                  {settlements.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      No transfers recorded yet.
-                    </p>
-                  ) : (
-                    orderedSettlements
-                      .slice(0, transfersExpanded ? undefined : 3)
-                      .map((settlement) => (
-                        <div
-                          key={settlement.id}
-                          className="flex flex-wrap items-start justify-between gap-3 border-t pt-3 text-sm"
-                        >
-                          <div>
-                            <strong>
-                              {settlement.senderDisplayName} →{' '}
-                              {settlement.recipientDisplayName}
-                            </strong>
-                            <p className="text-muted-foreground">
-                              Transferred {readableDate(settlement.settledOn)} ·
-                              Recorded by {settlement.recordedByDisplayName}{' '}
-                              {new Intl.DateTimeFormat('en', {
-                                dateStyle: 'medium',
-                                timeStyle: 'short',
-                              }).format(new Date(settlement.createdAt))}
-                            </p>
-                            {settlement.method && (
-                              <p>Method reported: {settlement.method}</p>
-                            )}
-                            {settlement.note && <p>Note: {settlement.note}</p>}
-                          </div>
-                          <strong>
-                            {amountText(
-                              settlement.amountMinor,
-                              settlement.currency,
-                            )}
-                          </strong>
-                        </div>
-                      ))
-                  )}
-                  {transfersExpanded && hasMoreSettlements && (
-                    <Button
-                      variant="outline"
-                      disabled={moreBusy !== null}
-                      onClick={() => void loadMoreSettlements()}
-                    >
-                      {moreBusy === 'settlements'
-                        ? 'Loading…'
-                        : 'Load more transfers'}
-                    </Button>
-                  )}
-                </div>
+                {settlements.length ? (
+                  renderTransfers(orderedSettlements.slice(0, 3), true)
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No transfers recorded yet.
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Reported by members; no payment processed or verified.
+                </p>
               </CardContent>
             </Card>
+            <MoneyRecordPanel
+              open={balanceView === 'transfers'}
+              title="All recorded transfers"
+              onClose={() => setBalanceView(null)}
+            >
+              <div className="space-y-3">
+                {renderTransfers(orderedSettlements)}
+                {loadError && (
+                  <p role="alert" className="text-destructive">
+                    {loadError}
+                  </p>
+                )}
+                {hasMoreSettlements && (
+                  <Button
+                    variant="outline"
+                    disabled={moreBusy !== null}
+                    onClick={() => void loadMoreSettlements()}
+                  >
+                    {moreBusy === 'settlements'
+                      ? 'Loading…'
+                      : 'Load more transfers'}
+                  </Button>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Reported by members; no payment processed or verified.
+                </p>
+              </div>
+            </MoneyRecordPanel>
           </>
         )
       )}

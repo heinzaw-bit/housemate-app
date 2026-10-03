@@ -1,8 +1,12 @@
 'use client';
 
-import { ArrowRight, ChevronDown, Plus, ReceiptText } from 'lucide-react';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { ArrowRight, Plus, ReceiptText } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FinancialHistory } from '@/components/financial-history';
+import {
+  MoneyRecordPanel,
+  MoneyRecordTabs,
+} from '@/components/money-record-panel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -30,7 +34,7 @@ import {
 import { formatRecordDate as readableDate } from '@/lib/date-format';
 import { suggestedEventParticipants } from '@/lib/event-expense';
 import { confirmationFailure } from '@/lib/financial-confirmation';
-import { useLeaveGuard } from '@/lib/pending-work';
+import { hasPendingWork, useLeaveGuard } from '@/lib/pending-work';
 import { appendRecords } from '@/lib/record-pages';
 
 const methods: { id: SplitMethod; label: string; hint: string }[] = [
@@ -96,10 +100,10 @@ export function ExpenseWorkspace({
   const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [selected, setSelected] = useState<Expense | null>(null);
-  const [historyExpanded, setHistoryExpanded] = useState(true);
-  const [detailsExpanded, setDetailsExpanded] = useState(true);
-  const historyPanelId = useId();
-  const detailsPanelId = useId();
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(!!initialRecordId);
+  const [returnToHistory, setReturnToHistory] = useState(false);
+  const editFormRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -179,7 +183,7 @@ export function ExpenseWorkspace({
   useEffect(() => {
     if (!initialRecordId) return;
     let active = true;
-    setDetailsExpanded(true);
+    setDetailOpen(true);
     setDetailError('');
     getExpense(token, household.id, initialRecordId)
       .then((record) => {
@@ -198,15 +202,6 @@ export function ExpenseWorkspace({
     };
   }, [initialRecordId, token, household.id]);
 
-  useEffect(() => {
-    if (initialRecordId && !loading && (selected || detailError)) {
-      document
-        .getElementById('expense-detail')
-        ?.scrollIntoView({ block: 'start' });
-      document.getElementById('expense-detail')?.focus({ preventScroll: true });
-    }
-  }, [initialRecordId, loading, selected, detailError]);
-
   function invalidate() {
     previewGeneration.current += 1;
     setPreview(null);
@@ -217,6 +212,7 @@ export function ExpenseWorkspace({
   }
 
   function startEdit(expense: Expense) {
+    setDetailOpen(false);
     setVoidOpen(false);
     setEditing(expense);
     setTitle(expense.title);
@@ -246,6 +242,12 @@ export function ExpenseWorkspace({
     setNotice('');
     invalidate();
   }
+
+  useEffect(() => {
+    if (!formOpen || !editing) return;
+    editFormRef.current?.scrollIntoView({ block: 'start' });
+    editFormRef.current?.querySelector('input')?.focus({ preventScroll: true });
+  }, [formOpen, editing]);
 
   function buildDraft(): ExpenseDraft {
     const amountMinor = parseMinor(amount);
@@ -356,6 +358,7 @@ export function ExpenseWorkspace({
         ),
       );
       setSelected(created);
+      setDetailOpen(true);
       onMoneyChanged();
       setNotice(
         editing
@@ -391,7 +394,16 @@ export function ExpenseWorkspace({
   }
 
   async function selectExpense(id: string) {
-    setDetailsExpanded(true);
+    if (hasPendingWork()) {
+      setNotice(
+        'Finish or discard your open draft before opening another record.',
+      );
+      return;
+    }
+    setHistoryOpen(false);
+    setReturnToHistory(historyOpen);
+    setSelected(null);
+    setDetailOpen(true);
     setVoidOpen(false);
     setDetailError('');
     try {
@@ -431,6 +443,36 @@ export function ExpenseWorkspace({
       setLoadingMore(false);
     }
   }
+
+  const renderHistoryRows = (records: Expense[]) =>
+    records.map((expense) => (
+      <button
+        type="button"
+        key={expense.id}
+        onClick={() => void selectExpense(expense.id)}
+        className={`history-row flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left transition-colors hover:bg-muted/50 ${selected?.id === expense.id ? 'border-primary bg-primary/5' : 'border-border'}`}
+      >
+        <span>
+          <strong className="block">{expense.title}</strong>
+          {expense.voidedAt && (
+            <small className="text-destructive">
+              Voided · excluded from balances
+            </small>
+          )}
+          <small className="text-muted-foreground">
+            {readableDate(expense.spentOn)}
+          </small>
+        </span>
+        <span className="shrink-0 text-right">
+          <strong className="block text-sm">
+            {money(expense.amountMinor, expense.currency)}
+          </strong>
+          <small className="text-muted-foreground">
+            {expense.voidedAt ? 'Voided' : 'Confirmed'}
+          </small>
+        </span>
+      </button>
+    ));
 
   return (
     <div className="content-inner space-y-6">
@@ -476,7 +518,7 @@ export function ExpenseWorkspace({
         </p>
       )}
       {formOpen && (!loading || !initialEventId) && (
-        <Card>
+        <Card ref={editFormRef}>
           <CardHeader>
             <CardTitle>
               {editing ? `Edit ${editing.title}` : 'Add a shared expense'}
@@ -755,56 +797,43 @@ export function ExpenseWorkspace({
           </CardContent>
         </Card>
       )}
-      {expenses.length > 0 && (
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.85fr)]">
-          <Card className={selected ? 'max-lg:hidden' : undefined}>
-            <CardHeader>
-              <CardTitle>
-                <button
-                  type="button"
-                  className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg text-left"
-                  aria-expanded={historyExpanded}
-                  aria-controls={historyPanelId}
-                  onClick={() => setHistoryExpanded((open) => !open)}
+      {(expenses.length > 0 || detailOpen) && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-3">
+              <CardTitle>Expense history</CardTitle>
+              {(expenses.length > 3 || hasMore) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setHistoryOpen(true)}
+                  disabled={formOpen}
                 >
-                  Expense history
-                  <ChevronDown
-                    size={20}
-                    aria-hidden="true"
-                    className={historyExpanded ? 'rotate-180' : undefined}
-                  />
-                </button>
-              </CardTitle>
+                  View all expenses
+                </Button>
+              )}
             </CardHeader>
-            <CardContent
-              id={historyPanelId}
-              hidden={!historyExpanded}
-              className="space-y-2"
-            >
-              {expenses.map((expense) => (
-                <button
-                  type="button"
-                  key={expense.id}
-                  onClick={() => void selectExpense(expense.id)}
-                  className={`history-row flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left transition-colors hover:bg-muted/50 ${selected?.id === expense.id ? 'border-primary bg-primary/5' : 'border-border'}`}
-                >
-                  <span>
-                    <strong className="block">{expense.title}</strong>
-                    {expense.voidedAt && (
-                      <small className="text-destructive">
-                        Voided · excluded from balances
-                      </small>
-                    )}
-                    <small className="text-muted-foreground">
-                      {readableDate(expense.spentOn)} · Paid by{' '}
-                      {expense.payerDisplayName}
-                    </small>
-                  </span>
-                  <strong className="shrink-0 text-sm">
-                    {money(expense.amountMinor, expense.currency)}
-                  </strong>
-                </button>
-              ))}
+            <CardContent className="space-y-2">
+              {expenses.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No expenses yet.
+                </p>
+              )}
+              {renderHistoryRows(expenses.slice(0, 3))}
+            </CardContent>
+          </Card>
+          <MoneyRecordPanel
+            open={historyOpen}
+            title="All expenses"
+            onClose={() => setHistoryOpen(false)}
+          >
+            <div className="space-y-2">
+              {loadError && (
+                <p role="alert" className="text-destructive">
+                  {loadError}
+                </p>
+              )}
+              {renderHistoryRows(expenses)}
               {hasMore && (
                 <Button
                   variant="outline"
@@ -814,53 +843,27 @@ export function ExpenseWorkspace({
                   {loadingMore ? 'Loading…' : 'Load more'}
                 </Button>
               )}
-            </CardContent>
-          </Card>
-          <Card
-            id="expense-detail"
-            tabIndex={-1}
-            className={`scroll-mt-6 ${selected || detailError ? '' : 'max-lg:hidden'}`}
+            </div>
+          </MoneyRecordPanel>
+          <MoneyRecordPanel
+            open={detailOpen}
+            locked={busy !== null}
+            title="Expense details"
+            onClose={() => {
+              setDetailOpen(false);
+              setVoidOpen(false);
+              if (returnToHistory) setHistoryOpen(true);
+            }}
           >
-            <CardHeader>
-              {selected && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mb-2 self-start lg:hidden"
-                  onClick={() => {
-                    setSelected(null);
-                    setVoidOpen(false);
-                  }}
-                >
-                  Back to expenses
-                </Button>
-              )}
-              <CardTitle>
-                <button
-                  type="button"
-                  className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg text-left"
-                  aria-expanded={detailsExpanded}
-                  aria-controls={detailsPanelId}
-                  onClick={() => setDetailsExpanded((open) => !open)}
-                >
-                  Expense details
-                  <ChevronDown
-                    size={20}
-                    aria-hidden="true"
-                    className={detailsExpanded ? 'rotate-180' : undefined}
-                  />
-                </button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent id={detailsPanelId} hidden={!detailsExpanded}>
+            <div className="space-y-4">
               {detailError && (
                 <p role="alert" className="text-sm text-destructive">
                   {detailError}
                 </p>
               )}
-              {!selected && (
-                <p className="text-sm text-muted-foreground">
-                  Select an expense to see its full breakdown.
+              {!selected && !detailError && (
+                <p role="status" className="text-sm text-muted-foreground">
+                  Loading expense…
                 </p>
               )}
               {selected && (
@@ -870,6 +873,9 @@ export function ExpenseWorkspace({
                     <strong className="text-xl text-primary">
                       {money(selected.amountMinor, selected.currency)}
                     </strong>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {selected.voidedAt ? 'Voided' : 'Confirmed'}
+                    </p>
                     {selected.voidedAt && (
                       <p className="mt-2 rounded-lg bg-muted p-2 text-muted-foreground">
                         Voided by {selected.voidedByDisplayName ?? 'a member'}{' '}
@@ -946,24 +952,6 @@ export function ExpenseWorkspace({
                       }}
                     />
                   )}
-                  <dl className="grid grid-cols-2 gap-3">
-                    <div>
-                      <dt className="text-muted-foreground">Date</dt>
-                      <dd>{readableDate(selected.spentOn)}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">Paid by</dt>
-                      <dd>{selected.payerDisplayName}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">Split</dt>
-                      <dd className="capitalize">{selected.splitMethod}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">Added by</dt>
-                      <dd>{selected.createdByDisplayName}</dd>
-                    </div>
-                  </dl>
                   <div>
                     <h4 className="mb-2 font-medium">Each person’s share</h4>
                     {selected.shares.map((share) => (
@@ -978,17 +966,46 @@ export function ExpenseWorkspace({
                       </div>
                     ))}
                   </div>
-                  <FinancialHistory
-                    key={`${selected.id}-${selected.revision}`}
-                    token={token}
-                    householdId={household.id}
-                    recordId={selected.id}
-                    kind="expense"
+                  <MoneyRecordTabs
+                    key={`tabs-${selected.id}-${selected.revision}`}
+                    details={
+                      <div className="space-y-4">
+                        <dl className="grid grid-cols-2 gap-3">
+                          <div>
+                            <dt className="text-muted-foreground">Date</dt>
+                            <dd>{readableDate(selected.spentOn)}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-muted-foreground">Paid by</dt>
+                            <dd>{selected.payerDisplayName}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-muted-foreground">Split</dt>
+                            <dd className="capitalize">
+                              {selected.splitMethod}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-muted-foreground">Added by</dt>
+                            <dd>{selected.createdByDisplayName}</dd>
+                          </div>
+                        </dl>
+                      </div>
+                    }
+                    activity={
+                      <FinancialHistory
+                        key={`${selected.id}-${selected.revision}`}
+                        token={token}
+                        householdId={household.id}
+                        recordId={selected.id}
+                        kind="expense"
+                      />
+                    }
                   />
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </MoneyRecordPanel>
         </div>
       )}
     </div>

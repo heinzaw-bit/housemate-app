@@ -1,8 +1,12 @@
 'use client';
 
-import { ChevronDown, Plus, ReceiptText, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { Plus, ReceiptText, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FinancialHistory } from '@/components/financial-history';
+import {
+  MoneyRecordPanel,
+  MoneyRecordTabs,
+} from '@/components/money-record-panel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -30,7 +34,7 @@ import {
 import { displayBillPreview } from '@/lib/bill-presentation';
 import { formatRecordDate as date } from '@/lib/date-format';
 import { confirmationFailure } from '@/lib/financial-confirmation';
-import { useLeaveGuard } from '@/lib/pending-work';
+import { hasPendingWork, useLeaveGuard } from '@/lib/pending-work';
 import { appendRecords } from '@/lib/record-pages';
 
 type AdjustmentRow = {
@@ -94,10 +98,9 @@ export function BillWorkspace({
   const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [selected, setSelected] = useState<Bill | null>(null);
-  const [historyExpanded, setHistoryExpanded] = useState(true);
-  const [detailsExpanded, setDetailsExpanded] = useState(true);
-  const historyPanelId = useId();
-  const detailsPanelId = useId();
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(!!initialRecordId);
+  const [returnToHistory, setReturnToHistory] = useState(false);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -168,7 +171,7 @@ export function BillWorkspace({
   useEffect(() => {
     if (!initialRecordId) return;
     let active = true;
-    setDetailsExpanded(true);
+    setDetailOpen(true);
     setDetailError('');
     getBill(token, household.id, initialRecordId)
       .then((record) => {
@@ -188,15 +191,6 @@ export function BillWorkspace({
   }, [initialRecordId, token, household.id]);
 
   useEffect(() => {
-    if (initialRecordId && !loading && (selected || detailError)) {
-      document
-        .getElementById('bill-detail')
-        ?.scrollIntoView({ block: 'start' });
-      document.getElementById('bill-detail')?.focus({ preventScroll: true });
-    }
-  }, [initialRecordId, loading, selected, detailError]);
-
-  useEffect(() => {
     if (!editScrollRequest) return;
     editFormRef.current?.scrollIntoView({
       behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -204,6 +198,7 @@ export function BillWorkspace({
         : 'smooth',
       block: 'start',
     });
+    editFormRef.current?.querySelector('input')?.focus({ preventScroll: true });
   }, [editScrollRequest]);
 
   function invalidate() {
@@ -215,6 +210,7 @@ export function BillWorkspace({
     setFormError('');
   }
   function startEdit(bill: Bill) {
+    setDetailOpen(false);
     setVoidOpen(false);
     setFormStep('details');
     const activeIds = new Set(members.map((member) => member.id));
@@ -396,6 +392,7 @@ export function BillWorkspace({
         ),
       );
       setSelected(result);
+      setDetailOpen(true);
       onMoneyChanged();
       setNotice(
         editing
@@ -434,7 +431,16 @@ export function BillWorkspace({
   }
 
   async function chooseBill(id: string) {
-    setDetailsExpanded(true);
+    if (hasPendingWork()) {
+      setNotice(
+        'Finish or discard your open draft before opening another record.',
+      );
+      return;
+    }
+    setHistoryOpen(false);
+    setReturnToHistory(historyOpen);
+    setSelected(null);
+    setDetailOpen(true);
     setVoidOpen(false);
     setDetailError('');
     try {
@@ -491,6 +497,39 @@ export function BillWorkspace({
   }
 
   const displayed = preview ? displayBillPreview(preview) : null;
+  const renderHistoryRows = (records: Bill[]) =>
+    records.map((bill) => (
+      <button
+        type="button"
+        key={bill.id}
+        onClick={() => void chooseBill(bill.id)}
+        className="flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left hover:bg-muted/40"
+      >
+        <span className="flex min-w-0 items-center gap-3">
+          <ReceiptText size={18} />
+          <span className="min-w-0">
+            <strong className="block truncate">{bill.title}</strong>
+            {bill.voidedAt && (
+              <small className="text-destructive">
+                Voided · excluded from totals
+              </small>
+            )}
+            <small className="text-muted-foreground">
+              Due {date(bill.dueDate)}
+            </small>
+          </span>
+        </span>
+        <span className="shrink-0 text-right">
+          <strong className="block">
+            {money(bill.amountMinor, bill.currency)}
+          </strong>
+          <small className="capitalize text-muted-foreground">
+            {bill.voidedAt ? 'Voided' : bill.paymentStatus}
+          </small>
+        </span>
+      </button>
+    ));
+
   return (
     <div className="content-inner space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1085,67 +1124,40 @@ export function BillWorkspace({
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading bills…</p>
       ) : (
-        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.9fr)]">
-          <Card className={selected ? 'max-lg:hidden' : undefined}>
-            <CardHeader>
-              <CardTitle>
-                <button
-                  type="button"
-                  className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg text-left"
-                  aria-expanded={historyExpanded}
-                  aria-controls={historyPanelId}
-                  onClick={() => setHistoryExpanded((open) => !open)}
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-3">
+              <CardTitle>Bill history</CardTitle>
+              {(bills.length > 3 || hasMore) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setHistoryOpen(true)}
+                  disabled={formOpen}
                 >
-                  Bill history
-                  <ChevronDown
-                    size={20}
-                    aria-hidden="true"
-                    className={historyExpanded ? 'rotate-180' : undefined}
-                  />
-                </button>
-              </CardTitle>
+                  View all bills
+                </Button>
+              )}
             </CardHeader>
-            <CardContent
-              id={historyPanelId}
-              hidden={!historyExpanded}
-              className="space-y-2"
-            >
+            <CardContent className="space-y-2">
               {bills.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  No bills yet. Add your first household bill.
+                <p className="text-sm text-muted-foreground">No bills yet.</p>
+              )}
+              {renderHistoryRows(bills.slice(0, 3))}
+            </CardContent>
+          </Card>
+          <MoneyRecordPanel
+            open={historyOpen}
+            title="All bills"
+            onClose={() => setHistoryOpen(false)}
+          >
+            <div className="space-y-2">
+              {loadError && (
+                <p role="alert" className="text-destructive">
+                  {loadError}
                 </p>
               )}
-              {bills.map((bill) => (
-                <button
-                  type="button"
-                  key={bill.id}
-                  onClick={() => void chooseBill(bill.id)}
-                  className="flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left hover:bg-muted/40"
-                >
-                  <span className="flex min-w-0 items-center gap-3">
-                    <ReceiptText size={18} />
-                    <span className="min-w-0">
-                      <strong className="block truncate">{bill.title}</strong>
-                      {bill.voidedAt && (
-                        <small className="text-destructive">
-                          Voided · excluded from totals
-                        </small>
-                      )}
-                      <small className="text-muted-foreground">
-                        {bill.provider} · Due {date(bill.dueDate)}
-                      </small>
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-right">
-                    <strong className="block">
-                      {money(bill.amountMinor, bill.currency)}
-                    </strong>
-                    <small className="capitalize text-muted-foreground">
-                      {bill.voidedAt ? 'Voided' : bill.paymentStatus}
-                    </small>
-                  </span>
-                </button>
-              ))}
+              {renderHistoryRows(bills)}
               {hasMore && (
                 <Button
                   variant="outline"
@@ -1155,57 +1167,27 @@ export function BillWorkspace({
                   {loadingMore ? 'Loading…' : 'Load more'}
                 </Button>
               )}
-            </CardContent>
-          </Card>
-          <Card
-            id="bill-detail"
-            tabIndex={-1}
-            className={`scroll-mt-6 ${selected || detailError ? '' : 'max-lg:hidden'}`}
+            </div>
+          </MoneyRecordPanel>
+          <MoneyRecordPanel
+            open={detailOpen}
+            locked={busy !== null}
+            title="Bill details"
+            onClose={() => {
+              setDetailOpen(false);
+              setVoidOpen(false);
+              if (returnToHistory) setHistoryOpen(true);
+            }}
           >
-            <CardHeader>
-              {selected && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mb-2 self-start lg:hidden"
-                  onClick={() => {
-                    setSelected(null);
-                    setVoidOpen(false);
-                  }}
-                >
-                  Back to bills
-                </Button>
-              )}
-              <CardTitle>
-                <button
-                  type="button"
-                  className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg text-left"
-                  aria-expanded={detailsExpanded}
-                  aria-controls={detailsPanelId}
-                  onClick={() => setDetailsExpanded((open) => !open)}
-                >
-                  Bill detail
-                  <ChevronDown
-                    size={20}
-                    aria-hidden="true"
-                    className={detailsExpanded ? 'rotate-180' : undefined}
-                  />
-                </button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent
-              id={detailsPanelId}
-              hidden={!detailsExpanded}
-              className="space-y-4"
-            >
+            <div className="space-y-4">
               {detailError && (
                 <p role="alert" className="text-sm text-destructive">
                   {detailError}
                 </p>
               )}
-              {!selected && (
-                <p className="text-sm text-muted-foreground">
-                  Select a bill to see its full breakdown.
+              {!selected && !detailError && (
+                <p role="status" className="text-sm text-muted-foreground">
+                  Loading bill…
                 </p>
               )}
               {selected && (
@@ -1215,6 +1197,9 @@ export function BillWorkspace({
                     <strong className="text-xl text-primary">
                       {money(selected.amountMinor, selected.currency)}
                     </strong>
+                    <p className="mt-1 text-sm capitalize text-muted-foreground">
+                      {selected.voidedAt ? 'Voided' : selected.paymentStatus}
+                    </p>
                     {selected.voidedAt && (
                       <p className="mt-2 rounded-lg bg-muted p-2 text-sm text-muted-foreground">
                         Voided by {selected.voidedByDisplayName ?? 'a member'}{' '}
@@ -1292,98 +1277,6 @@ export function BillWorkspace({
                       }}
                     />
                   )}
-                  <dl className="grid grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <dt className="text-muted-foreground">Provider</dt>
-                      <dd>{selected.provider}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">Type</dt>
-                      <dd className="capitalize">{selected.billType}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">Period</dt>
-                      <dd>
-                        {date(selected.periodStart)} –{' '}
-                        {date(selected.periodEnd)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">Due</dt>
-                      <dd>{date(selected.dueDate)}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">Payer</dt>
-                      <dd>{selected.payerDisplayName}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">Provider status</dt>
-                      <dd className="capitalize">{selected.paymentStatus}</dd>
-                    </div>
-                  </dl>
-                  {!selected.voidedAt && (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm">Mark provider:</span>
-                      <Button
-                        size="sm"
-                        variant={
-                          selected.paymentStatus === 'unpaid'
-                            ? 'default'
-                            : 'outline'
-                        }
-                        disabled={busy === 'status'}
-                        onClick={() => void updateStatus('unpaid')}
-                      >
-                        Unpaid
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={
-                          selected.paymentStatus === 'paid'
-                            ? 'default'
-                            : 'outline'
-                        }
-                        disabled={busy === 'status'}
-                        onClick={() => void updateStatus('paid')}
-                      >
-                        Paid
-                      </Button>
-                    </div>
-                  )}
-                  {!selected.voidedAt && (
-                    <p className="text-xs text-muted-foreground">
-                      This records a status only. HouseMate does not process a
-                      payment.
-                    </p>
-                  )}
-                  <div className="border-t pt-3 text-sm">
-                    <p>
-                      Base shared:{' '}
-                      <strong>
-                        {money(selected.baseMinor, selected.currency)}
-                      </strong>
-                    </p>
-                    <p>
-                      Charges:{' '}
-                      <strong>
-                        {money(selected.chargeMinor, selected.currency)}
-                      </strong>{' '}
-                      · Credits:{' '}
-                      <strong>
-                        {money(selected.creditMinor, selected.currency)}
-                      </strong>
-                    </p>
-                  </div>
-                  {selected.adjustmentBreakdown.map((item) => (
-                    <p
-                      key={`${item.label}-${item.kind}-${item.amountMinor}-${item.memberIds.join(',')}`}
-                      className="text-sm"
-                    >
-                      {item.label}: {item.kind.endsWith('credit') ? '−' : '+'}
-                      {money(item.amountMinor, selected.currency)} ·{' '}
-                      {item.shares.map((share) => share.displayName).join(', ')}
-                    </p>
-                  ))}
                   <div>
                     <h4 className="mb-2 font-medium">Final shares</h4>
                     {selected.shares.map((share) => (
@@ -1398,17 +1291,125 @@ export function BillWorkspace({
                       </div>
                     ))}
                   </div>
-                  <FinancialHistory
-                    key={`${selected.id}-${selected.revision}`}
-                    token={token}
-                    householdId={household.id}
-                    recordId={selected.id}
-                    kind="bill"
+                  <MoneyRecordTabs
+                    key={`tabs-${selected.id}-${selected.revision}`}
+                    details={
+                      <div className="space-y-4">
+                        <dl className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <dt className="text-muted-foreground">Provider</dt>
+                            <dd>{selected.provider}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-muted-foreground">Type</dt>
+                            <dd className="capitalize">{selected.billType}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-muted-foreground">Period</dt>
+                            <dd>
+                              {date(selected.periodStart)} –{' '}
+                              {date(selected.periodEnd)}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-muted-foreground">Due</dt>
+                            <dd>{date(selected.dueDate)}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-muted-foreground">Payer</dt>
+                            <dd>{selected.payerDisplayName}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-muted-foreground">
+                              Provider status
+                            </dt>
+                            <dd className="capitalize">
+                              {selected.paymentStatus}
+                            </dd>
+                          </div>
+                        </dl>
+                        {!selected.voidedAt && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm">Mark provider:</span>
+                            <Button
+                              size="sm"
+                              variant={
+                                selected.paymentStatus === 'unpaid'
+                                  ? 'default'
+                                  : 'outline'
+                              }
+                              disabled={busy === 'status'}
+                              onClick={() => void updateStatus('unpaid')}
+                            >
+                              Unpaid
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={
+                                selected.paymentStatus === 'paid'
+                                  ? 'default'
+                                  : 'outline'
+                              }
+                              disabled={busy === 'status'}
+                              onClick={() => void updateStatus('paid')}
+                            >
+                              Paid
+                            </Button>
+                          </div>
+                        )}
+                        {!selected.voidedAt && (
+                          <p className="text-xs text-muted-foreground">
+                            This records a status only. HouseMate does not
+                            process a payment.
+                          </p>
+                        )}
+                        <div className="border-t pt-3 text-sm">
+                          <p>
+                            Base shared:{' '}
+                            <strong>
+                              {money(selected.baseMinor, selected.currency)}
+                            </strong>
+                          </p>
+                          <p>
+                            Charges:{' '}
+                            <strong>
+                              {money(selected.chargeMinor, selected.currency)}
+                            </strong>{' '}
+                            · Credits:{' '}
+                            <strong>
+                              {money(selected.creditMinor, selected.currency)}
+                            </strong>
+                          </p>
+                        </div>
+                        {selected.adjustmentBreakdown.map((item) => (
+                          <p
+                            key={`${item.label}-${item.kind}-${item.amountMinor}-${item.memberIds.join(',')}`}
+                            className="text-sm"
+                          >
+                            {item.label}:{' '}
+                            {item.kind.endsWith('credit') ? '−' : '+'}
+                            {money(item.amountMinor, selected.currency)} ·{' '}
+                            {item.shares
+                              .map((share) => share.displayName)
+                              .join(', ')}
+                          </p>
+                        ))}
+                      </div>
+                    }
+                    activity={
+                      <FinancialHistory
+                        key={`${selected.id}-${selected.revision}`}
+                        token={token}
+                        householdId={household.id}
+                        recordId={selected.id}
+                        kind="bill"
+                      />
+                    }
                   />
                 </>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </MoneyRecordPanel>
         </div>
       )}
     </div>

@@ -84,10 +84,9 @@ export function HouseholdMenu({
         {household.name.charAt(0).toUpperCase()}
       </span>
       <span className={styles.identity}>
-        <span className={styles.label}>YOUR HOUSEHOLD</span>
         <strong>{household.name}</strong>
       </span>
-      <ChevronDown size={17} className={styles.chevron} aria-hidden="true" />
+      <ChevronDown size={16} className={styles.chevron} aria-hidden="true" />
     </>
   );
 
