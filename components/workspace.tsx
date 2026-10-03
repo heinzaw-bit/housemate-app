@@ -21,7 +21,6 @@ import {
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import type { ApiUser, Household } from '@/lib/api';
 import {
@@ -299,7 +298,7 @@ export function Workspace({
           )}
           {section === 'money' &&
             (preview || !token ? (
-              <MoneySection household={household} />
+              <MoneySection />
             ) : (
               <MoneyWorkspace
                 key={household.id}
@@ -558,7 +557,7 @@ function HomeSection({
   );
 }
 
-function MoneySection({ household }: { household: Household }) {
+function MoneySection() {
   return (
     <div className="content-inner">
       <div className="page-heading-row">
@@ -569,10 +568,6 @@ function MoneySection({ household }: { household: Household }) {
           </h1>
           <p>Every shared cost will have a place and a clear explanation.</p>
         </div>
-        <Badge variant="secondary" className="currency-badge">
-          {household.defaultCurrency === 'THB' ? '฿' : '$'}{' '}
-          <span>{household.defaultCurrency} HOUSEHOLD</span>
-        </Badge>
       </div>
       <div className="money-intro">
         <div>

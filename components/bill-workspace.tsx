@@ -1,7 +1,7 @@
 'use client';
 
-import { Plus, ReceiptText, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { ChevronDown, Plus, ReceiptText, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { FinancialHistory } from '@/components/financial-history';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -94,6 +94,10 @@ export function BillWorkspace({
   const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [selected, setSelected] = useState<Bill | null>(null);
+  const [historyExpanded, setHistoryExpanded] = useState(true);
+  const [detailsExpanded, setDetailsExpanded] = useState(true);
+  const historyPanelId = useId();
+  const detailsPanelId = useId();
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -164,6 +168,7 @@ export function BillWorkspace({
   useEffect(() => {
     if (!initialRecordId) return;
     let active = true;
+    setDetailsExpanded(true);
     setDetailError('');
     getBill(token, household.id, initialRecordId)
       .then((record) => {
@@ -429,6 +434,7 @@ export function BillWorkspace({
   }
 
   async function chooseBill(id: string) {
+    setDetailsExpanded(true);
     setVoidOpen(false);
     setDetailError('');
     try {
@@ -1079,12 +1085,31 @@ export function BillWorkspace({
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading bills…</p>
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.9fr)]">
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.9fr)]">
           <Card className={selected ? 'max-lg:hidden' : undefined}>
             <CardHeader>
-              <CardTitle>Bill history</CardTitle>
+              <CardTitle>
+                <button
+                  type="button"
+                  className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg text-left"
+                  aria-expanded={historyExpanded}
+                  aria-controls={historyPanelId}
+                  onClick={() => setHistoryExpanded((open) => !open)}
+                >
+                  Bill history
+                  <ChevronDown
+                    size={20}
+                    aria-hidden="true"
+                    className={historyExpanded ? 'rotate-180' : undefined}
+                  />
+                </button>
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent
+              id={historyPanelId}
+              hidden={!historyExpanded}
+              className="space-y-2"
+            >
               {bills.length === 0 && (
                 <p className="text-sm text-muted-foreground">
                   No bills yet. Add your first household bill.
@@ -1151,9 +1176,28 @@ export function BillWorkspace({
                   Back to bills
                 </Button>
               )}
-              <CardTitle>Bill detail</CardTitle>
+              <CardTitle>
+                <button
+                  type="button"
+                  className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg text-left"
+                  aria-expanded={detailsExpanded}
+                  aria-controls={detailsPanelId}
+                  onClick={() => setDetailsExpanded((open) => !open)}
+                >
+                  Bill detail
+                  <ChevronDown
+                    size={20}
+                    aria-hidden="true"
+                    className={detailsExpanded ? 'rotate-180' : undefined}
+                  />
+                </button>
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent
+              id={detailsPanelId}
+              hidden={!detailsExpanded}
+              className="space-y-4"
+            >
               {detailError && (
                 <p role="alert" className="text-sm text-destructive">
                   {detailError}

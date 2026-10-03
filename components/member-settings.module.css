@@ -27,8 +27,8 @@
   width: 54px;
   height: 54px;
   border-radius: 18px;
-  background: #eac19a;
-  color: #61401e;
+  background: var(--accent);
+  color: var(--accent-foreground);
   font-size: 24px;
   font-weight: 800;
 }

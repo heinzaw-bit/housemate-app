@@ -1,7 +1,7 @@
 'use client';
 
-import { ArrowRight, Plus, ReceiptText } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowRight, ChevronDown, Plus, ReceiptText } from 'lucide-react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { FinancialHistory } from '@/components/financial-history';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -96,6 +96,10 @@ export function ExpenseWorkspace({
   const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [selected, setSelected] = useState<Expense | null>(null);
+  const [historyExpanded, setHistoryExpanded] = useState(true);
+  const [detailsExpanded, setDetailsExpanded] = useState(true);
+  const historyPanelId = useId();
+  const detailsPanelId = useId();
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -175,6 +179,7 @@ export function ExpenseWorkspace({
   useEffect(() => {
     if (!initialRecordId) return;
     let active = true;
+    setDetailsExpanded(true);
     setDetailError('');
     getExpense(token, household.id, initialRecordId)
       .then((record) => {
@@ -386,6 +391,7 @@ export function ExpenseWorkspace({
   }
 
   async function selectExpense(id: string) {
+    setDetailsExpanded(true);
     setVoidOpen(false);
     setDetailError('');
     try {
@@ -750,12 +756,31 @@ export function ExpenseWorkspace({
         </Card>
       )}
       {expenses.length > 0 && (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.85fr)]">
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.85fr)]">
           <Card className={selected ? 'max-lg:hidden' : undefined}>
             <CardHeader>
-              <CardTitle>Expense history</CardTitle>
+              <CardTitle>
+                <button
+                  type="button"
+                  className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg text-left"
+                  aria-expanded={historyExpanded}
+                  aria-controls={historyPanelId}
+                  onClick={() => setHistoryExpanded((open) => !open)}
+                >
+                  Expense history
+                  <ChevronDown
+                    size={20}
+                    aria-hidden="true"
+                    className={historyExpanded ? 'rotate-180' : undefined}
+                  />
+                </button>
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent
+              id={historyPanelId}
+              hidden={!historyExpanded}
+              className="space-y-2"
+            >
               {expenses.map((expense) => (
                 <button
                   type="button"
@@ -810,9 +835,24 @@ export function ExpenseWorkspace({
                   Back to expenses
                 </Button>
               )}
-              <CardTitle>Expense details</CardTitle>
+              <CardTitle>
+                <button
+                  type="button"
+                  className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg text-left"
+                  aria-expanded={detailsExpanded}
+                  aria-controls={detailsPanelId}
+                  onClick={() => setDetailsExpanded((open) => !open)}
+                >
+                  Expense details
+                  <ChevronDown
+                    size={20}
+                    aria-hidden="true"
+                    className={detailsExpanded ? 'rotate-180' : undefined}
+                  />
+                </button>
+              </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent id={detailsPanelId} hidden={!detailsExpanded}>
               {detailError && (
                 <p role="alert" className="text-sm text-destructive">
                   {detailError}

@@ -2,7 +2,6 @@
 import dynamic from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -114,9 +113,6 @@ function MoneyContent({
             <h1>Money</h1>
             <p>See balances, review records, and add household costs.</p>
           </div>
-          <Badge variant="secondary" className="currency-badge">
-            {household.defaultCurrency} HOUSEHOLD
-          </Badge>
         </div>
         {summaryError && (
           <p role="alert" className="text-sm text-destructive">
