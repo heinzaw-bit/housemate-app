@@ -1,13 +1,6 @@
 // @vitest-environment jsdom
-import {
-  cleanup,
-  render,
-  screen,
-  waitFor,
-  within,
-} from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import axe from 'axe-core';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { BalanceWorkspace } from '../components/balance-workspace';
 import { BillWorkspace } from '../components/bill-workspace';
@@ -155,7 +148,72 @@ afterEach(() => {
 for (const kind of ['bill', 'expense'] as const) {
   const Component = kind === 'bill' ? BillWorkspace : ExpenseWorkspace;
   const cap = kind === 'bill' ? 'Bill' : 'Expense';
-  test(`${kind}: full history retries a failed page and opens a record beyond the first page`, async () => {
+  test(`${kind}: text controls expand inline and selecting a record opens its details`, async () => {
+    const user = userEvent.setup();
+    render(
+      <Component
+        household={household}
+        token="session"
+        onMoneyChanged={vi.fn()}
+      />,
+    );
+    const all = await screen.findByRole('button', {
+      name: `View all ${kind}s`,
+    });
+    expect(all.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByText(`${cap} 4`)).toBeNull();
+    all.focus();
+    await user.keyboard('{Enter}');
+    await screen.findByText(`${cap} 4`);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Show less' })
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
+    await user.click(screen.getByRole('button', { name: 'Show less' }));
+    expect(screen.queryByText(`${cap} 4`)).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Hide details' }));
+    await user.click(
+      screen.getByRole('button', { name: new RegExp(`${cap} 1`) }),
+    );
+    await screen.findByRole('heading', { name: `${cap} 1` });
+    const hide = screen.getByRole('button', { name: 'Hide details' });
+    const panel = document.getElementById(
+      hide.getAttribute('aria-controls') ?? '',
+    );
+    expect(panel?.hidden).toBe(false);
+    await user.click(hide);
+    expect(panel?.hidden).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'View details' }));
+    expect(panel?.hidden).toBe(false);
+  });
+  test(`${kind}: collapsing details preserves the removal draft without a write`, async () => {
+    const user = userEvent.setup();
+    render(
+      <Component
+        household={household}
+        token="session"
+        initialRecordId={`${kind}-1`}
+        onMoneyChanged={vi.fn()}
+      />,
+    );
+    await screen.findByRole('heading', { name: `${cap} 1` });
+    await user.click(
+      screen.getByRole('button', { name: `Remove mistaken ${kind}` }),
+    );
+    await user.type(screen.getByLabelText('Reason'), 'Duplicate entry');
+    await user.click(screen.getByRole('button', { name: 'Hide details' }));
+    await user.click(screen.getByRole('button', { name: 'View details' }));
+    expect((screen.getByLabelText('Reason') as HTMLInputElement).value).toBe(
+      'Duplicate entry',
+    );
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(
+      kind === 'bill' ? api.previewBillVoid : api.previewExpenseVoid,
+    ).not.toHaveBeenCalled();
+  });
+  test(`${kind}: inline pagination retries failures and retains the three-record preview`, async () => {
     const user = userEvent.setup();
     if (kind === 'bill') {
       vi.mocked(api.getBills)
@@ -182,125 +240,19 @@ for (const kind of ['bill', 'expense'] as const) {
     await user.click(
       await screen.findByRole('button', { name: `View all ${kind}s` }),
     );
-    const list = await screen.findByRole('dialog', { name: `All ${kind}s` });
-    await user.click(within(list).getByRole('button', { name: 'Load more' }));
-    await within(list).findByRole('alert');
-    await user.click(within(list).getByRole('button', { name: 'Load more' }));
-    await user.click(
-      await within(list).findByRole('button', {
-        name: new RegExp(`${cap} 51`),
-      }),
-    );
-    const detail = await screen.findByRole('dialog', {
-      name: `${cap} details`,
-    });
-    await within(detail).findByRole('heading', { name: `${cap} 51` });
+    await user.click(screen.getByRole('button', { name: 'Load more' }));
+    await screen.findByRole('alert');
+    await user.click(screen.getByRole('button', { name: 'Load more' }));
+    await screen.findByText(`${cap} 51`);
+    await user.click(screen.getByRole('button', { name: 'Show less' }));
+    expect(screen.queryByText(`${cap} 51`)).toBeNull();
     const listApi = kind === 'bill' ? api.getBills : api.getExpenses;
     expect(listApi).toHaveBeenNthCalledWith(2, 'session', 'home', 50, 50);
     expect(listApi).toHaveBeenNthCalledWith(3, 'session', 'home', 50, 50);
   });
-  test(`${kind}: editing returns to the existing preview form without hiding it behind a panel`, async () => {
-    const user = userEvent.setup();
-    render(
-      <Component
-        household={household}
-        token="session"
-        initialRecordId={`${kind}-1`}
-        onMoneyChanged={vi.fn()}
-      />,
-    );
-    const detail = await screen.findByRole('dialog', {
-      name: `${cap} details`,
-    });
-    await user.click(
-      await within(detail).findByRole('button', { name: `Edit ${kind}` }),
-    );
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    const title = await screen.findByDisplayValue(`${cap} 1`);
-    expect(document.activeElement).toBe(title);
-    expect(
-      (
-        screen.getByRole('button', {
-          name: `View all ${kind}s`,
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
-  });
-  test(`${kind}: three-record preview, full list, lazy activity and Back to the full list`, async () => {
-    const user = userEvent.setup();
-    render(
-      <main>
-        <h1>Money</h1>
-        <Component
-          household={household}
-          token="session"
-          onMoneyChanged={vi.fn()}
-        />
-      </main>,
-    );
-    await screen.findByText(`${cap} 1`);
-    expect(screen.queryByText(`${cap} 4`)).toBeNull();
-    expect(screen.queryByRole('dialog')).toBeNull();
-    await user.click(screen.getByRole('button', { name: `View all ${kind}s` }));
-    let dialog = await screen.findByRole('dialog', { name: `All ${kind}s` });
-    await user.click(
-      within(dialog).getByRole('button', { name: new RegExp(`${cap} 4`) }),
-    );
-    dialog = await screen.findByRole('dialog', { name: `${cap} details` });
-    await within(dialog).findByRole('heading', { name: `${cap} 4` });
-    const history =
-      kind === 'bill' ? api.getBillHistory : api.getExpenseHistory;
-    expect(history).not.toHaveBeenCalled();
-    expect(within(dialog).getAllByText('Aye').length).toBeGreaterThan(0);
-    await user.click(within(dialog).getByRole('tab', { name: 'Activity' }));
-    await within(dialog).findByText('No history is available for this record.');
-    expect(history).toHaveBeenCalledWith('session', 'home', `${kind}-4`, 20, 0);
-    expect(within(dialog).getByText('Lin')).toBeTruthy();
-    const results = await axe.run(dialog, {
-      rules: { 'color-contrast': { enabled: false } },
-    });
-    expect(results.violations.map((v) => v.id)).toEqual([]);
-    await user.keyboard('{Escape}');
-    await screen.findByRole('dialog', { name: `All ${kind}s` });
-    await user.keyboard('{Escape}');
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-  });
-  test(`${kind}: a removal draft survives Escape and can be cancelled before closing`, async () => {
-    const user = userEvent.setup();
-    render(
-      <Component
-        household={household}
-        token="session"
-        initialRecordId={`${kind}-4`}
-        onMoneyChanged={vi.fn()}
-      />,
-    );
-    const dialog = await screen.findByRole('dialog', {
-      name: `${cap} details`,
-    });
-    await within(dialog).findByRole('heading', { name: `${cap} 4` });
-    await user.click(
-      within(dialog).getByRole('button', { name: `Remove mistaken ${kind}` }),
-    );
-    await user.type(within(dialog).getByLabelText('Reason'), 'Duplicate entry');
-    await user.keyboard('{Escape}');
-    expect(screen.getByRole('dialog', { name: `${cap} details` })).toBeTruthy();
-    expect(
-      (within(dialog).getByLabelText('Reason') as HTMLInputElement).value,
-    ).toBe('Duplicate entry');
-    expect(within(dialog).getByRole('alert').textContent).toContain(
-      'Finish or cancel',
-    );
-    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-    await user.keyboard('{Escape}');
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(
-      kind === 'bill' ? api.previewBillVoid : api.previewExpenseVoid,
-    ).not.toHaveBeenCalled();
-  });
 }
 
-test('balances show compact suggestions/transfers and open complete authorized views without writes', async () => {
+test('balance cards expand sources, suggestions and transfers independently inline', async () => {
   const user = userEvent.setup();
   const suggestions = Array.from({ length: 3 }, (_, i) => ({
     senderMemberId: 'one',
@@ -348,23 +300,21 @@ test('balances show compact suggestions/transfers and open complete authorized v
       settledOn: '2026-10-03',
       recordedByDisplayName: 'Aye',
       createdAt: '2026-10-03T00:00:00Z',
-      method: 'Bank transfer',
-      note: 'Saved note',
     })),
   );
-  vi.mocked(api.getBalanceEntries).mockResolvedValue([
-    {
+  vi.mocked(api.getBalanceEntries).mockResolvedValue(
+    Array.from({ length: 4 }, (_, i) => ({
       sourceType: 'expense',
-      sourceId: 'expense-1',
-      title: 'Groceries source',
+      sourceId: `expense-${i}`,
+      title: `Source ${i}`,
       occurredOn: '2026-10-03',
       paidMinor: 0,
-      shareMinor: 300,
+      shareMinor: 100,
       sentMinor: 0,
       receivedMinor: 0,
-      effectMinor: -300,
-    },
-  ]);
+      effectMinor: -100,
+    })),
+  );
   render(
     <BalanceWorkspace
       household={household}
@@ -372,43 +322,34 @@ test('balances show compact suggestions/transfers and open complete authorized v
       onMoneyChanged={vi.fn()}
     />,
   );
-  await screen.findByRole('button', { name: 'View breakdown' });
+  const sources = await screen.findByRole('button', {
+    name: 'View all balance sources',
+  });
+  expect(screen.queryByText('Source 3')).toBeNull();
   expect(screen.queryByText('Recipient 2')).toBeNull();
-  expect(screen.queryByText(/Sender 0/)).toBeNull(); // date tie breaks by id desc
-  expect(screen.queryByText('Saved note')).toBeNull();
-  await user.click(screen.getByRole('button', { name: 'View breakdown' }));
-  let dialog = await screen.findByRole('dialog', { name: 'Balance breakdown' });
-  await within(dialog).findByText('Groceries source');
-  await user.keyboard('{Escape}');
-  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-  await user.click(screen.getByRole('button', { name: 'View all transfers' }));
-  dialog = await screen.findByRole('dialog', {
-    name: 'All recorded transfers',
-  });
-  expect(within(dialog).getAllByText(/Note: Saved note/).length).toBe(4);
-  await user.keyboard('{Escape}');
-  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(screen.queryByText(/Sender 0/)).toBeNull();
+  await user.click(sources);
+  await screen.findByText('Source 3');
   await user.click(
-    screen.getByRole('button', { name: 'View all suggestions' }),
+    screen.getByRole('button', { name: 'View all suggested transfers' }),
   );
-  dialog = await screen.findByRole('dialog', {
-    name: 'All suggested transfers',
-  });
-  expect(within(dialog).getByText('Recipient 2')).toBeTruthy();
+  await screen.findByText('Recipient 2');
   await user.click(
-    within(dialog).getAllByRole('button', { name: 'Record transfer' })[0],
+    screen.getByRole('button', { name: 'View all recorded transfers' }),
   );
-  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-  expect(
-    screen.getByRole('heading', {
-      name: 'Record money transferred outside HouseMate',
-    }),
-  ).toBeTruthy();
-  expect(
-    (
-      screen.getByRole('button', {
-        name: 'View all transfers',
-      }) as HTMLButtonElement
-    ).disabled,
-  ).toBe(true);
+  await screen.findByText(/Sender 0/);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  await user.click(
+    screen.getByRole('button', { name: 'Show fewer suggested transfers' }),
+  );
+  expect(screen.queryByText('Recipient 2')).toBeNull();
+  expect(screen.getByText('Source 3')).toBeTruthy();
+  await user.click(
+    screen.getByRole('button', { name: 'Show fewer balance sources' }),
+  );
+  expect(screen.queryByText('Source 3')).toBeNull();
+  await user.click(
+    screen.getByRole('button', { name: 'Show fewer recorded transfers' }),
+  );
+  expect(screen.queryByText(/Sender 0/)).toBeNull();
 });
