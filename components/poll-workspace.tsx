@@ -24,6 +24,7 @@ import {
   useCommunicationMembers,
   usePublicationKey,
 } from './communication-parts';
+import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
 const scopes = [
   { value: 'open', label: 'Open polls' },
@@ -231,6 +232,28 @@ export function PollWorkspace({
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [notice, setNotice] = useState('');
+  const savedDraft = useSavedDraft({
+    kind: 'poll',
+    enabled: formOpen,
+    value: { question, options, allowMultiple, deadlineLocal, voterIds },
+    seed: () => ({
+      question,
+      options,
+      allowMultiple,
+      deadlineLocal,
+      voterIds: chosenVoters,
+    }),
+    restore(snapshot) {
+      setQuestion(snapshot.question);
+      setOptions(snapshot.options);
+      setAllowMultiple(snapshot.allowMultiple);
+      setDeadlineLocal(snapshot.deadlineLocal);
+      setVoterIds(snapshot.voterIds);
+      setFormOpen(true);
+      setReviewing(false);
+    },
+  });
+
   const publicationKey = usePublicationKey();
   const chosenVoters = voterIds ?? audience.members.map((member) => member.id);
   useEffect(() => {
@@ -267,8 +290,12 @@ export function PollWorkspace({
       };
       const created = await createPoll(token, household.id, {
         ...draft,
-        idempotencyKey: publicationKey.forDraft(draft),
+        idempotencyKey: savedDraft.confirmationKey(
+          draft,
+          publicationKey.forDraft(draft),
+        ),
       });
+      savedDraft.clear();
       browser.accept(created);
       setScope('open');
       setFormOpen(false);
@@ -283,6 +310,7 @@ export function PollWorkspace({
       onHouseChanged();
       void browser.refresh(true);
     } catch (failure) {
+      savedDraft.reject(failure);
       setFormError(
         failure instanceof Error
           ? failure.message
@@ -297,7 +325,17 @@ export function PollWorkspace({
       title="Polls"
       subtitle="Make decisions together and keep the results clear."
       createOpen={formOpen}
-      onToggleCreate={() => setFormOpen((old) => !old)}
+      draftNotice={
+        <SavedDraftNotice
+          draft={savedDraft}
+          disabled={saving}
+          resumeDisabled={!!audience.error || !audience.members.length}
+        />
+      }
+      onToggleCreate={() => {
+        if (formOpen) savedDraft.clear();
+        setFormOpen((old) => !old);
+      }}
       form={
         <Card>
           <CardHeader>

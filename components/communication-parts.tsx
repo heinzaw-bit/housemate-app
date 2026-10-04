@@ -142,6 +142,7 @@ export function CommunicationBrowser<T extends { id: string }>({
   title,
   subtitle,
   createOpen,
+  draftNotice,
   onToggleCreate,
   form,
   scopes,
@@ -166,6 +167,7 @@ export function CommunicationBrowser<T extends { id: string }>({
   title: string;
   subtitle: string;
   createOpen: boolean;
+  draftNotice?: React.ReactNode;
   onToggleCreate: () => void;
   form: React.ReactNode;
   scopes: { value: string; label: string }[];
@@ -239,6 +241,7 @@ export function CommunicationBrowser<T extends { id: string }>({
           {notice}
         </p>
       )}
+      {draftNotice}
       {createOpen && form}
       <fieldset className="flex flex-wrap gap-2">
         <legend className="sr-only">{title} filter</legend>

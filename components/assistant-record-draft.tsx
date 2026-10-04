@@ -22,6 +22,7 @@ import {
 } from '@/lib/api';
 import { confirmationFailure } from '@/lib/financial-confirmation';
 import type { AssistantDraftReviewProps } from './assistant-draft-review';
+import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
 type RecordDraft = Exclude<
   AssistantActionDraft,
@@ -64,6 +65,7 @@ export function AssistantRecordDraft({
   onCancel,
   onPublished,
   onAccessLost,
+  resumeSavedFields = false,
 }: Omit<AssistantDraftReviewProps, 'draft'> & { draft: RecordDraft }) {
   const [fields, setFields] = useState(draft.fields);
   const [amount, setAmount] = useState(
@@ -116,6 +118,34 @@ export function AssistantRecordDraft({
   const inFlight = useRef(false);
   const heading = useRef<HTMLHeadingElement>(null);
   const id = useId();
+  const savedDraft = useSavedDraft({
+    kind: `assistant-editor-${draft.kind}`,
+    enabled: true,
+    autoResume: resumeSavedFields,
+    value: {
+      fields,
+      amount,
+      quantity,
+      participants,
+      method,
+      values,
+      adjustments,
+    },
+    restore(snapshot) {
+      setFields(snapshot.fields);
+      setAmount(snapshot.amount);
+      setQuantity(snapshot.quantity);
+      setParticipants(snapshot.participants);
+      setMethod(snapshot.method);
+      setValues(snapshot.values);
+      setAdjustments(snapshot.adjustments);
+      setReview(null);
+    },
+  });
+  const cancelSaved = () => {
+    savedDraft.clear();
+    onCancel();
+  };
   const financial = draft.kind === 'expense' || draft.kind === 'bill';
   const field = fields as ShoppingDraft & ChoreDraft & ExpenseDraft & BillDraft;
   const update = (key: string, value: string | null) =>
@@ -169,6 +199,7 @@ export function AssistantRecordDraft({
       cause instanceof ApiRequestError &&
       [401, 403, 404].includes(cause.status)
     ) {
+      savedDraft.clear();
       onAccessLost(cause.message);
       return;
     }
@@ -316,7 +347,8 @@ export function AssistantRecordDraft({
     setBusy(true);
     setError('');
     try {
-      const { payload: input, key } = next;
+      const { payload: input } = next;
+      const key = savedDraft.confirmationKey(input.fields, next.key);
       const saved =
         input.kind === 'shopping'
           ? await createShoppingItem(token, household.id, input.fields, key)
@@ -325,8 +357,12 @@ export function AssistantRecordDraft({
             : input.kind === 'expense'
               ? await createExpense(token, household.id, input.fields, key)
               : await createBill(token, household.id, input.fields, key);
-      if (active.current) onPublished(input.kind, saved.id, input.fields.title);
+      if (active.current) {
+        savedDraft.clear();
+        onPublished(input.kind, saved.id, input.fields.title);
+      }
     } catch (cause) {
+      savedDraft.reject(cause);
       if (!active.current) return;
       // Only a definitive first rejection permits a changed confirmation. A later
       // rejection cannot disprove a prior request whose response was interrupted.
@@ -443,6 +479,7 @@ export function AssistantRecordDraft({
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
+        <SavedDraftNotice draft={savedDraft} disabled={busy} />
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
@@ -830,7 +867,7 @@ export function AssistantRecordDraft({
                         ? 'Calculate and review'
                         : 'Review draft'}
                   </Button>
-                  <Button type="button" variant="outline" onClick={onCancel}>
+                  <Button type="button" variant="outline" onClick={cancelSaved}>
                     Cancel draft
                   </Button>
                 </div>
@@ -978,7 +1015,7 @@ export function AssistantRecordDraft({
               <Button
                 variant="ghost"
                 disabled={busy || !!attempt}
-                onClick={onCancel}
+                onClick={cancelSaved}
               >
                 Cancel draft
               </Button>

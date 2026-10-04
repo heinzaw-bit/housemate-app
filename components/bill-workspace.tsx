@@ -32,6 +32,7 @@ import { formatRecordDate as date } from '@/lib/date-format';
 import { confirmationFailure } from '@/lib/financial-confirmation';
 import { useLeaveGuard } from '@/lib/pending-work';
 import { appendRecords } from '@/lib/record-pages';
+import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
 type AdjustmentRow = {
   id: string;
@@ -135,6 +136,41 @@ export function BillWorkspace({
   const moreInFlight = useRef(false);
   const previewGeneration = useRef(0);
   const editFormRef = useRef<HTMLDivElement>(null);
+
+  const savedDraft = useSavedDraft({
+    kind: 'bill',
+    enabled: formOpen && !editing,
+    value: {
+      title,
+      billType,
+      provider,
+      amount,
+      periodStart,
+      periodEnd,
+      dueDate,
+      payer,
+      paymentStatus,
+      participants,
+      rows,
+    },
+    restore(snapshot) {
+      setTitle(snapshot.title);
+      setBillType(snapshot.billType);
+      setProvider(snapshot.provider);
+      setAmount(snapshot.amount);
+      setPeriodStart(snapshot.periodStart);
+      setPeriodEnd(snapshot.periodEnd);
+      setDueDate(snapshot.dueDate);
+      setPayer(snapshot.payer);
+      setPaymentStatus(snapshot.paymentStatus);
+      setParticipants(snapshot.participants);
+      setRows(snapshot.rows);
+      setFormOpen(true);
+      invalidate();
+      setEditing(null);
+      setFormStep('details');
+    },
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -389,12 +425,18 @@ export function BillWorkspace({
             editPreviewId,
             retryKey,
           )
-        : await createBill(token, household.id, previewDraft, retryKey);
+        : await createBill(
+            token,
+            household.id,
+            previewDraft,
+            savedDraft.confirmationKey(previewDraft, retryKey),
+          );
       setBills((old) =>
         [result, ...old.filter((bill) => bill.id !== result.id)].sort((a, b) =>
           b.dueDate.localeCompare(a.dueDate),
         ),
       );
+      if (!editing) savedDraft.clear();
       setSelected(result);
       onMoneyChanged();
       setNotice(
@@ -414,6 +456,7 @@ export function BillWorkspace({
       setRetryKey('');
       setEditPreviewId('');
     } catch (error) {
+      savedDraft.reject(error);
       if (
         error instanceof ApiRequestError &&
         (error.code === 'PREVIEW_REQUIRED' || error.code === 'STALE_RECORD')
@@ -493,6 +536,11 @@ export function BillWorkspace({
   const displayed = preview ? displayBillPreview(preview) : null;
   return (
     <div className="content-inner space-y-6">
+      <SavedDraftNotice
+        draft={savedDraft}
+        disabled={busy === 'save'}
+        resumeDisabled={loading || !!loadError || !!editing}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-heading text-xl">Bills</h2>
@@ -504,6 +552,7 @@ export function BillWorkspace({
           variant={formOpen ? 'outline' : 'default'}
           disabled={busy === 'save'}
           onClick={() => {
+            if (formOpen && !editing) savedDraft.clear();
             setFormOpen((old) => !old);
             setFormStep('details');
             setEditing(null);

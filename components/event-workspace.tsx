@@ -17,6 +17,7 @@ import {
   respondToEvent,
 } from '@/lib/api';
 import { useLeaveGuard } from '@/lib/pending-work';
+import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
 function localAt(timezone: string, hoursAhead: number): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -82,6 +83,28 @@ export function EventWorkspace({
   const [idempotencyKey, setIdempotencyKey] = useState(() =>
     crypto.randomUUID(),
   );
+  const savedDraft = useSavedDraft({
+    kind: 'event',
+    enabled: formOpen,
+    value: {
+      title,
+      description,
+      location,
+      startsAtLocal,
+      endsAtLocal,
+      idempotencyKey,
+    },
+    restore(snapshot) {
+      setTitle(snapshot.title);
+      setDescription(snapshot.description);
+      setLocation(snapshot.location);
+      setStartsAtLocal(snapshot.startsAtLocal);
+      setEndsAtLocal(snapshot.endsAtLocal);
+      setIdempotencyKey(snapshot.idempotencyKey);
+      setFormOpen(true);
+    },
+  });
+
   const requestNumber = useRef(0);
   const selected = events.find((event) => event.id === selectedId) ?? null;
 
@@ -200,7 +223,12 @@ export function EventWorkspace({
     };
     setSaving(true);
     try {
-      const created = await createEvent(token, household.id, draft);
+      const { idempotencyKey: proposedKey, ...fields } = draft;
+      const created = await createEvent(token, household.id, {
+        ...fields,
+        idempotencyKey: savedDraft.confirmationKey(fields, proposedKey),
+      });
+      savedDraft.clear();
       setEvents((old) => [
         created,
         ...old.filter((item) => item.id !== created.id),
@@ -216,6 +244,7 @@ export function EventWorkspace({
       setIdempotencyKey(crypto.randomUUID());
       setNotice('Event created. Members can now respond.');
     } catch (failure) {
+      savedDraft.reject(failure);
       setError(message(failure));
     } finally {
       setSaving(false);
@@ -252,6 +281,11 @@ export function EventWorkspace({
     : '';
   return (
     <section className="space-y-4" aria-label="Events">
+      <SavedDraftNotice
+        draft={savedDraft}
+        disabled={saving}
+        resumeDisabled={loading || !!error}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-heading text-xl">Events</h2>
@@ -268,7 +302,13 @@ export function EventWorkspace({
           >
             <RefreshCw size={15} aria-hidden="true" /> Refresh
           </Button>
-          <Button size="sm" onClick={() => setFormOpen((old) => !old)}>
+          <Button
+            size="sm"
+            onClick={() => {
+              if (formOpen) savedDraft.clear();
+              setFormOpen((old) => !old);
+            }}
+          >
             {formOpen ? 'Close form' : 'Create event'}
           </Button>
         </div>

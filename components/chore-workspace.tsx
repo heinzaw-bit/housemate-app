@@ -23,6 +23,7 @@ import {
   skipChore,
 } from '@/lib/api';
 import { useLeaveGuard } from '@/lib/pending-work';
+import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
 function tomorrow(timezone: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -95,6 +96,19 @@ export function ChoreWorkspace({
   const [swapTargetId, setSwapTargetId] = useState('');
   const [reassignId, setReassignId] = useState('');
   const selected = chores.find((chore) => chore.id === selectedId) ?? null;
+
+  const savedDraft = useSavedDraft({
+    kind: 'chore',
+    enabled: formOpen,
+    value: { title, note, dueAtLocal, assigneeId },
+    restore(snapshot) {
+      setTitle(snapshot.title);
+      setNote(snapshot.note);
+      setDueAtLocal(snapshot.dueAtLocal);
+      setAssigneeId(snapshot.assigneeId);
+      setFormOpen(true);
+    },
+  });
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -235,8 +249,14 @@ export function ChoreWorkspace({
     setError('');
     setNotice('');
     try {
-      const created = await createChore(token, household.id, draft);
+      const created = await createChore(
+        token,
+        household.id,
+        draft,
+        savedDraft.confirmationKey(draft),
+      );
       setChores((current) => [created, ...current]);
+      savedDraft.clear();
       setSelectedId(created.id);
       setFilter('upcoming');
       setTitle('');
@@ -246,6 +266,7 @@ export function ChoreWorkspace({
       setNotice('Chore created.');
       onHouseChanged();
     } catch (failure) {
+      savedDraft.reject(failure);
       setError(errorText(failure));
     } finally {
       setBusy(false);
@@ -313,6 +334,11 @@ export function ChoreWorkspace({
   );
   return (
     <div className="content-inner space-y-6">
+      <SavedDraftNotice
+        draft={savedDraft}
+        disabled={busy}
+        resumeDisabled={loading || loadFailed}
+      />
       <div>
         <h2 className="text-xl font-semibold">Chores</h2>
         <p className="text-sm text-muted-foreground">
@@ -390,7 +416,10 @@ export function ChoreWorkspace({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setFormOpen(false)}
+                onClick={() => {
+                  savedDraft.clear();
+                  setFormOpen(false);
+                }}
               >
                 Close
               </Button>

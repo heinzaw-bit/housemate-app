@@ -32,6 +32,7 @@ import { suggestedEventParticipants } from '@/lib/event-expense';
 import { confirmationFailure } from '@/lib/financial-confirmation';
 import { useLeaveGuard } from '@/lib/pending-work';
 import { appendRecords } from '@/lib/record-pages';
+import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
 const methods: { id: SplitMethod; label: string; hint: string }[] = [
   {
@@ -127,6 +128,24 @@ export function ExpenseWorkspace({
   const pageOffset = useRef(0);
   const moreInFlight = useRef(false);
   const previewGeneration = useRef(0);
+
+  const savedDraft = useSavedDraft({
+    kind: 'expense',
+    enabled: formOpen && !editing,
+    value: { title, amount, spentOn, payer, participants, method, values },
+    restore(snapshot) {
+      setTitle(snapshot.title);
+      setAmount(snapshot.amount);
+      setSpentOn(snapshot.spentOn);
+      setPayer(snapshot.payer);
+      setParticipants(snapshot.participants);
+      setMethod(snapshot.method);
+      setValues(snapshot.values);
+      setFormOpen(true);
+      invalidate();
+      setEditing(null);
+    },
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -349,12 +368,18 @@ export function ExpenseWorkspace({
             editPreviewId,
             retryKey,
           )
-        : await createExpense(token, household.id, previewDraft, retryKey);
+        : await createExpense(
+            token,
+            household.id,
+            previewDraft,
+            savedDraft.confirmationKey(previewDraft, retryKey),
+          );
       setExpenses((old) =>
         [created, ...old.filter((item) => item.id !== created.id)].sort(
           (a, b) => b.spentOn.localeCompare(a.spentOn),
         ),
       );
+      if (!editing) savedDraft.clear();
       setSelected(created);
       onMoneyChanged();
       setNotice(
@@ -373,6 +398,7 @@ export function ExpenseWorkspace({
       setRetryKey('');
       setEditPreviewId('');
     } catch (error) {
+      savedDraft.reject(error);
       if (
         error instanceof ApiRequestError &&
         (error.code === 'PREVIEW_REQUIRED' || error.code === 'STALE_RECORD')
@@ -434,6 +460,11 @@ export function ExpenseWorkspace({
 
   return (
     <div className="content-inner space-y-6">
+      <SavedDraftNotice
+        draft={savedDraft}
+        disabled={busy === 'save'}
+        resumeDisabled={loading || !!loadError || !!editing}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-heading text-xl">Expenses</h2>
@@ -445,6 +476,7 @@ export function ExpenseWorkspace({
           variant={formOpen ? 'outline' : 'default'}
           disabled={busy === 'save'}
           onClick={() => {
+            if (formOpen && !editing) savedDraft.clear();
             setFormOpen((old) => !old);
             setEditing(null);
             setTitle('');
@@ -695,7 +727,8 @@ export function ExpenseWorkspace({
                     <p className="text-xs text-muted-foreground">
                       {editing
                         ? `Revision ${editing.revision} will be replaced only after you confirm.`
-                        : formError.startsWith('Not yet confirmed:')
+                        : savedDraft.hasAttempt ||
+                            formError.startsWith('Not yet confirmed:')
                           ? 'Confirmation has not been verified. Use this same review to retry.'
                           : 'No expense has been saved yet.'}
                     </p>

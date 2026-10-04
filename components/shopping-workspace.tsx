@@ -28,6 +28,7 @@ import {
 } from '@/lib/api';
 import { confirmationFailure } from '@/lib/financial-confirmation';
 import { useLeaveGuard } from '@/lib/pending-work';
+import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
 function parseMoney(value: string): number | null {
   const clean = value.trim();
@@ -113,6 +114,23 @@ export function ShoppingWorkspace({
   const selected = items.find((item) => item.id === selectedId) ?? null;
   const money = (value: number, currency = household.defaultCurrency) =>
     `${formatCurrency(value, currency)} ${currency}`;
+
+  const savedDraft = useSavedDraft({
+    kind: 'shopping',
+    enabled: formOpen && !editing,
+    value: { title, quantity, unit, note, priority, buyer, estimate },
+    restore(snapshot) {
+      setTitle(snapshot.title);
+      setQuantity(snapshot.quantity);
+      setUnit(snapshot.unit);
+      setNote(snapshot.note);
+      setPriority(snapshot.priority);
+      setBuyer(snapshot.buyer);
+      setEstimate(snapshot.estimate);
+      setFormOpen(true);
+      setEditing(null);
+    },
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -259,11 +277,17 @@ export function ShoppingWorkspace({
             draft,
             editing.revision,
           )
-        : await createShoppingItem(token, household.id, draft);
+        : await createShoppingItem(
+            token,
+            household.id,
+            draft,
+            savedDraft.confirmationKey(draft),
+          );
       setItems((current) => [
         saved,
         ...current.filter((item) => item.id !== saved.id),
       ]);
+      if (!editing) savedDraft.clear();
       setSelectedId(saved.id);
       setFormOpen(false);
       setEditing(null);
@@ -271,6 +295,7 @@ export function ShoppingWorkspace({
       setFilter('needed');
       onHouseChanged();
     } catch (failure) {
+      savedDraft.reject(failure);
       setError(errorText(failure));
     } finally {
       setBusy(false);
@@ -476,6 +501,11 @@ export function ShoppingWorkspace({
 
   return (
     <div className="content-inner space-y-6">
+      <SavedDraftNotice
+        draft={savedDraft}
+        disabled={busy}
+        resumeDisabled={loading || !members.length || !!editing}
+      />
       <div>
         <h2 className="text-xl font-semibold">Shopping</h2>
         <p className="text-sm text-muted-foreground">
@@ -592,7 +622,10 @@ export function ShoppingWorkspace({
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setFormOpen(false)}
+                  onClick={() => {
+                    if (!editing) savedDraft.clear();
+                    setFormOpen(false);
+                  }}
                 >
                   Close
                 </Button>

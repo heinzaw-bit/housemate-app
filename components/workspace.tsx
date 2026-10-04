@@ -32,6 +32,7 @@ import { AccountMenu } from './account-menu';
 import { Brand } from './brand';
 import { HouseholdMenu } from './household-menu';
 import { HouseholdSearch } from './household-search';
+import { SavedDraftProvider } from './saved-draft';
 import { ThemeToggle } from './theme-toggle';
 import { WorkspaceLoading } from './workspace-loading';
 
@@ -88,7 +89,23 @@ const navItems = [
   { href: '/profile', label: 'Profile', section: 'profile', icon: UserRound },
 ] as const;
 
-export function Workspace({
+export function Workspace(props: Parameters<typeof ScopedWorkspace>[0]) {
+  return (
+    <SavedDraftProvider
+      account={props.preview ? '' : props.me.id}
+      household={props.household.id}
+      households={props.households.map((household) => household.id)}
+      context={`${props.household.defaultCurrency}:${props.household.timezone}`}
+    >
+      <ScopedWorkspace
+        key={`${props.me.id}:${props.household.id}:${props.household.defaultCurrency}:${props.household.timezone}`}
+        {...props}
+      />
+    </SavedDraftProvider>
+  );
+}
+
+function ScopedWorkspace({
   section,
   me,
   households,

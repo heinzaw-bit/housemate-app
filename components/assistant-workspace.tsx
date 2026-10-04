@@ -11,14 +11,17 @@ import {
   type AssistantTopic,
   askAssistant,
   getAssistantConfig,
+  getMembers,
   type Household,
   prepareAssistantDraft,
 } from '@/lib/api';
+import { readAssistantDraft } from '@/lib/assistant-draft-storage';
 import { moneyCreateHref } from '@/lib/dashboard';
 import { useLeaveGuard } from '@/lib/pending-work';
 import { AssistantDraftReview } from './assistant-draft-review';
 import styles from './assistant-workspace.module.css';
 import { HouseMateMascot } from './housemate-mascot';
+import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
 const questions: { topic: AssistantTopic; label: string; title: string }[] = [
   { topic: 'summary', label: 'What needs attention?', title: 'Catch me up' },
@@ -66,7 +69,81 @@ export function AssistantWorkspace({
   const earlier = turns.slice(0, -1).reverse();
   const current = useRef<AbortController | null>(null);
   const nextId = useRef(0);
+  const [recovering, setRecovering] = useState(false);
+  const [resumeSavedFields, setResumeSavedFields] = useState(false);
   useLeaveGuard(!!message.trim() || busy || !!activeDraft);
+
+  const savedDraft = useSavedDraft({
+    kind: 'assistant',
+    relatedKinds: [
+      'meal',
+      'announcement',
+      'shopping',
+      'chore',
+      'expense',
+      'bill',
+    ].map((kind) => `assistant-editor-${kind}`),
+    enabled: !!message.trim() || !!activeDraft,
+    value: {
+      message,
+      action: JSON.stringify(
+        activeDraft
+          ? {
+              kind: activeDraft.value.kind,
+              fields: activeDraft.value.fields,
+              recipientIds: activeDraft.value.recipientIds,
+            }
+          : null,
+      ),
+    },
+    validate(snapshot) {
+      try {
+        readAssistantDraft(snapshot.action);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    restore(snapshot) {
+      setMessage(snapshot.message);
+      const action = readAssistantDraft(snapshot.action);
+      if (!action) return;
+      setRecovering(true);
+      void getMembers(token, household.id)
+        .then((members) => {
+          if (
+            scope.current.token !== token ||
+            scope.current.householdId !== household.id
+          )
+            return;
+          setResumeSavedFields(true);
+          setDraft({
+            value: {
+              ...action,
+              householdId: household.id,
+              timezone: household.timezone,
+              generatedAt: new Date().toISOString(),
+              members: members.map(({ id, displayName }) => ({
+                id,
+                displayName,
+              })),
+              unresolvedFields: [],
+              notes: [
+                'Restored from this device. Check members, dates and amounts before confirming.',
+              ],
+            } as AssistantActionDraft,
+            token,
+            id: ++nextId.current,
+          });
+        })
+        .catch(() =>
+          setError(
+            'Reconnect to recover the action draft and check household access. Reload to try again.',
+          ),
+        )
+        .finally(() => setRecovering(false));
+    },
+  });
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: timezone changes invalidate local-time drafts and pending preparation.
   useEffect(() => {
@@ -128,6 +205,12 @@ export function AssistantWorkspace({
     label: string,
   ) {
     if (current.current || activeDraft) return;
+    if (question.message && savedDraft.pending) {
+      setError(
+        'Resume or discard your saved draft before starting another question or action.',
+      );
+      return;
+    }
     const controller = new AbortController();
     current.current = controller;
     setBusy(true);
@@ -147,6 +230,7 @@ export function AssistantWorkspace({
           if (prepared.draft.householdId !== household.id)
             throw new Error('The draft does not belong to this household.');
           setDraft({ value: prepared.draft, token, id: ++nextId.current });
+          setResumeSavedFields(false);
           setMessage('');
           setStatus(
             'Draft ready. Complete the details, review and confirm to save.',
@@ -174,7 +258,10 @@ export function AssistantWorkspace({
       setTurns((previous) =>
         [...previous, { id, question: label, answer }].slice(-6),
       );
-      if (question.message) setMessage('');
+      if (question.message) {
+        savedDraft.clear();
+        setMessage('');
+      }
       setStatus(
         answer.kind === 'clarification'
           ? 'Your question needs clarification.'
@@ -186,6 +273,7 @@ export function AssistantWorkspace({
         failure instanceof ApiRequestError &&
         ['UNAUTHENTICATED', 'NOT_FOUND', 'FORBIDDEN'].includes(failure.code)
       ) {
+        savedDraft.clear();
         setTurns([]);
         setEnabled(false);
         setActionsEnabled(false);
@@ -214,6 +302,10 @@ export function AssistantWorkspace({
 
   return (
     <div className={`content-inner ${styles.workspace}`}>
+      <SavedDraftNotice
+        draft={savedDraft}
+        disabled={busy || recovering || !!activeDraft}
+      />
       <header className={styles.header}>
         <HouseHelper />
         <div>
@@ -351,8 +443,10 @@ export function AssistantWorkspace({
             household records; each question is checked independently. Meal
             checks, announcements, shopping, chores, expenses and bills use
             editable drafts and explicit confirmation. Money shares come from
-            the API preview. Drafts and the six most recent answers stay in this
-            tab only; reloading loses unfinished drafts.
+            the API preview. Unfinished drafts are saved on this device for
+            seven days and can be resumed after reloading. Answers stay in this
+            tab. Signing out clears saved drafts. Nothing is submitted
+            automatically.
           </p>
         </div>
       </details>
@@ -386,7 +480,9 @@ export function AssistantWorkspace({
           draft={activeDraft.value}
           household={household}
           token={token}
+          resumeSavedFields={resumeSavedFields}
           onCancel={() => {
+            savedDraft.clear();
             setDraft(null);
             setStatus('Draft cancelled. Nothing was saved.');
             questionInput.current?.focus();
@@ -397,6 +493,7 @@ export function AssistantWorkspace({
               scope.current.householdId !== household.id
             )
               return;
+            savedDraft.clear();
             const money = kind === 'expense' || kind === 'bill';
             const view = {
               meal: 'meals',
@@ -443,6 +540,7 @@ export function AssistantWorkspace({
               scope.current.householdId !== household.id
             )
               return;
+            savedDraft.clear();
             setDraft(null);
             setTurns([]);
             setEnabled(false);

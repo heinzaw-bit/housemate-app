@@ -16,6 +16,7 @@ import {
 import { confirmationFailure } from '@/lib/financial-confirmation';
 import { AssistantRecordDraft } from './assistant-record-draft';
 import { CommunicationRecipients } from './communication-parts';
+import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
 type Attempt =
   | { kind: 'meal'; payload: MealDraft }
@@ -28,6 +29,7 @@ function CommunicationDraftReview({
   onCancel,
   onPublished,
   onAccessLost,
+  resumeSavedFields = false,
 }: {
   draft: Extract<AssistantActionDraft, { kind: 'meal' | 'announcement' }>;
   household: Household;
@@ -39,6 +41,7 @@ function CommunicationDraftReview({
     title: string,
   ) => void;
   onAccessLost: (message: string) => void;
+  resumeSavedFields?: boolean;
 }) {
   const [meal, setMeal] = useState(
     draft.kind === 'meal'
@@ -70,6 +73,22 @@ function CommunicationDraftReview({
   const active = useRef(true);
   const inFlight = useRef(false);
   const heading = useRef<HTMLHeadingElement | null>(null);
+  const savedDraft = useSavedDraft({
+    kind: `assistant-editor-${draft.kind}`,
+    enabled: true,
+    autoResume: resumeSavedFields,
+    value: { meal, announcement, recipients },
+    restore(snapshot) {
+      setMeal(snapshot.meal);
+      setAnnouncement(snapshot.announcement);
+      setRecipients(snapshot.recipients);
+      setReviewing(false);
+    },
+  });
+  const cancelSaved = () => {
+    savedDraft.clear();
+    onCancel();
+  };
   useEffect(() => {
     active.current = true;
     heading.current?.focus({ preventScroll: true });
@@ -136,22 +155,34 @@ function CommunicationDraftReview({
     setSaving(true);
     setError('');
     try {
+      const { idempotencyKey: proposedKey, ...fields } = next.payload;
+      const key = savedDraft.confirmationKey(fields, proposedKey);
       const published =
         next.kind === 'meal'
-          ? await createMeal(token, household.id, next.payload)
-          : await createAnnouncement(token, household.id, next.payload);
-      if (active.current)
+          ? await createMeal(token, household.id, {
+              ...next.payload,
+              idempotencyKey: key,
+            })
+          : await createAnnouncement(token, household.id, {
+              ...next.payload,
+              idempotencyKey: key,
+            });
+      if (active.current) {
+        savedDraft.clear();
         onPublished(
           next.kind,
           published.id,
           next.kind === 'meal' ? meal.question : announcement.title,
         );
+      }
     } catch (failure) {
+      savedDraft.reject(failure);
       if (!active.current) return;
       if (
         failure instanceof ApiRequestError &&
         [401, 403, 404].includes(failure.status)
       ) {
+        savedDraft.clear();
         onAccessLost(failure.message);
         return;
       }
@@ -194,6 +225,7 @@ function CommunicationDraftReview({
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
+        <SavedDraftNotice draft={savedDraft} disabled={saving} />
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
@@ -401,7 +433,7 @@ function CommunicationDraftReview({
                 <Button type="submit">
                   {isMeal ? 'Review meal check' : 'Review announcement'}
                 </Button>
-                <Button type="button" variant="outline" onClick={onCancel}>
+                <Button type="button" variant="outline" onClick={cancelSaved}>
                   Cancel draft
                 </Button>
               </div>
@@ -483,7 +515,7 @@ function CommunicationDraftReview({
               <Button
                 variant="ghost"
                 disabled={saving || !!attempt}
-                onClick={onCancel}
+                onClick={cancelSaved}
               >
                 Cancel draft
               </Button>
@@ -496,6 +528,7 @@ function CommunicationDraftReview({
 }
 
 export interface AssistantDraftReviewProps {
+  resumeSavedFields?: boolean;
   draft: AssistantActionDraft;
   household: Household;
   token: string;

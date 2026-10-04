@@ -24,6 +24,7 @@ import {
   setMealCookingRoles,
 } from '@/lib/api';
 import { useLeaveGuard } from '@/lib/pending-work';
+import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
 function localNow(timezone: string, hoursAhead: number): string {
   const date = new Date(Date.now() + hoursAhead * 3_600_000);
@@ -107,6 +108,34 @@ export function MealWorkspace({
   const [detailRoleMemberId, setDetailRoleMemberId] = useState('');
   const [detailRoleLabel, setDetailRoleLabel] = useState('Cook');
   const selected = meals.find((meal) => meal.id === selectedId) ?? null;
+
+  const savedDraft = useSavedDraft({
+    kind: 'meal',
+    enabled: showForm,
+    value: {
+      mealType,
+      question,
+      startsAtLocal,
+      responseDeadlineLocal,
+      participantIds,
+      draftRoles,
+      roleMemberId,
+      roleLabel,
+      idempotencyKey,
+    },
+    restore(snapshot) {
+      setMealType(snapshot.mealType);
+      setQuestion(snapshot.question);
+      setStartsAtLocal(snapshot.startsAtLocal);
+      setResponseDeadlineLocal(snapshot.responseDeadlineLocal);
+      setParticipantIds(snapshot.participantIds);
+      setDraftRoles(snapshot.draftRoles);
+      setRoleMemberId(snapshot.roleMemberId);
+      setRoleLabel(snapshot.roleLabel);
+      setIdempotencyKey(snapshot.idempotencyKey);
+      setShowForm(true);
+    },
+  });
 
   async function refresh() {
     const request = ++requestNumber.current;
@@ -267,15 +296,19 @@ export function MealWorkspace({
     }
     setSaving(true);
     try {
-      const meal = await createMeal(token, household.id, {
+      const fields = {
         mealType,
         question,
         startsAtLocal,
         responseDeadlineLocal,
         participantIds,
         cookingRoles: draftRoles,
-        idempotencyKey,
+      };
+      const meal = await createMeal(token, household.id, {
+        ...fields,
+        idempotencyKey: savedDraft.confirmationKey(fields, idempotencyKey),
       });
+      savedDraft.clear();
       setMeals((current) => [
         meal,
         ...current.filter((item) => item.id !== meal.id),
@@ -288,6 +321,7 @@ export function MealWorkspace({
       setIdempotencyKey(crypto.randomUUID());
       setDraftRoles([]);
     } catch (failure) {
+      savedDraft.reject(failure);
       setError(message(failure));
     } finally {
       setSaving(false);
@@ -337,6 +371,11 @@ export function MealWorkspace({
 
   return (
     <div className="content-inner space-y-6">
+      <SavedDraftNotice
+        draft={savedDraft}
+        disabled={saving}
+        resumeDisabled={loading || !members.length}
+      />
       <div>
         <h2 className="text-xl font-semibold">Meals</h2>
         <p className="text-sm text-muted-foreground">
@@ -499,7 +538,10 @@ export function MealWorkspace({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setShowForm(false)}
+                onClick={() => {
+                  savedDraft.clear();
+                  setShowForm(false);
+                }}
               >
                 Close
               </Button>

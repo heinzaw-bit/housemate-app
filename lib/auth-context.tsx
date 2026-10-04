@@ -13,6 +13,7 @@ import {
   useState,
 } from 'react';
 import { describeAuthFailure, readAuthRedirectError } from './auth-errors';
+import { syncDraftAccount } from './saved-drafts';
 
 interface AuthState {
   client: SupabaseClient | null;
@@ -85,6 +86,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     client.auth
       .getSession()
       .then(({ data, error }) => {
+        if (active && !sawAuthChange)
+          syncDraftAccount(data.session?.user.id ?? null);
         if (active)
           setState((current) => ({
             ...current,
@@ -110,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = client.auth.onAuthStateChange((event, session) => {
+      if (active) syncDraftAccount(session?.user.id ?? null);
       if (event !== 'INITIAL_SESSION') sawAuthChange = true;
       if (active)
         setState((current) => ({

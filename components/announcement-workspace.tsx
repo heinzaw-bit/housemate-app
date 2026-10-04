@@ -23,6 +23,7 @@ import {
   useCommunicationMembers,
   usePublicationKey,
 } from './communication-parts';
+import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
 const scopes = [
   { value: 'all', label: 'All announcements' },
@@ -71,6 +72,37 @@ export function AnnouncementWorkspace({
   const [formError, setFormError] = useState('');
   const [actionError, setActionError] = useState('');
   const [notice, setNotice] = useState('');
+  const savedDraft = useSavedDraft({
+    kind: 'announcement',
+    enabled: formOpen,
+    value: {
+      title,
+      body,
+      priority,
+      requiresAcknowledgement,
+      expiresAtLocal,
+      recipientIds,
+    },
+    seed: () => ({
+      title,
+      body,
+      priority,
+      requiresAcknowledgement,
+      expiresAtLocal,
+      recipientIds: chosenRecipients,
+    }),
+    restore(snapshot) {
+      setTitle(snapshot.title);
+      setBody(snapshot.body);
+      setPriority(snapshot.priority);
+      setRequiresAcknowledgement(snapshot.requiresAcknowledgement);
+      setExpiresAtLocal(snapshot.expiresAtLocal);
+      setRecipientIds(snapshot.recipientIds);
+      setFormOpen(true);
+      setReviewing(false);
+    },
+  });
+
   const publicationKey = usePublicationKey();
   const chosenRecipients =
     recipientIds ?? audience.members.map((member) => member.id);
@@ -104,8 +136,12 @@ export function AnnouncementWorkspace({
       };
       const published = await createAnnouncement(token, household.id, {
         ...draft,
-        idempotencyKey: publicationKey.forDraft(draft),
+        idempotencyKey: savedDraft.confirmationKey(
+          draft,
+          publicationKey.forDraft(draft),
+        ),
       });
+      savedDraft.clear();
       browser.accept(published);
       setScope('all');
       setFormOpen(false);
@@ -121,6 +157,7 @@ export function AnnouncementWorkspace({
       onHouseChanged();
       void browser.refresh(true);
     } catch (failure) {
+      savedDraft.reject(failure);
       setFormError(
         failure instanceof Error
           ? failure.message
@@ -161,7 +198,17 @@ export function AnnouncementWorkspace({
       title="Announcements"
       subtitle="Share updates with the people who need them."
       createOpen={formOpen}
-      onToggleCreate={() => setFormOpen((old) => !old)}
+      draftNotice={
+        <SavedDraftNotice
+          draft={savedDraft}
+          disabled={saving}
+          resumeDisabled={!!audience.error || !audience.members.length}
+        />
+      }
+      onToggleCreate={() => {
+        if (formOpen) savedDraft.clear();
+        setFormOpen((old) => !old);
+      }}
       form={
         <Card>
           <CardHeader>
