@@ -79,7 +79,7 @@ export type Section =
 const navItems = [
   { href: '/', label: 'Home', section: 'home', icon: LayoutDashboard },
   { href: '/money', label: 'Money', section: 'money', icon: WalletCards },
-  { href: '/house', label: 'House', section: 'house', icon: UsersRound },
+  { href: '/house', label: 'Board', section: 'house', icon: UsersRound },
   {
     href: '/assistant',
     label: 'Assistant',
@@ -487,7 +487,7 @@ function HomeSection({
               <h2>A little less to keep in your head.</h2>
             </div>
             <Link href={houseHref} className="inline-link">
-              Explore House <ArrowRight size={17} />
+              Explore Board <ArrowRight size={17} />
             </Link>
           </div>
 

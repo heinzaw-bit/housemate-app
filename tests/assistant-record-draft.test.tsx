@@ -443,32 +443,37 @@ test('pending writes block duplicate confirmation and unmounted drafts discard l
   await act(async () => finish({ id: 'saved' } as never));
   expect(published).not.toHaveBeenCalled();
 });
-test('chat drafts shopping locally without Gemini consent and links the explicitly saved record', async () => {
+test('Assistant answers without preparing or publishing an action even when API drafts are enabled', async () => {
   vi.mocked(api.getAssistantConfig).mockResolvedValue({
-    naturalLanguageEnabled: false,
+    naturalLanguageEnabled: true,
     actionDraftsEnabled: true,
-    provider: null,
+    provider: 'gemini',
     requiresPrivacyAcknowledgement: true,
     supportedDraftKinds: ['shopping'],
   });
   vi.mocked(api.prepareAssistantDraft).mockResolvedValue({ draft: shopping });
+  vi.mocked(api.askAssistant).mockResolvedValue({
+    kind: 'clarification',
+    topic: 'unsupported',
+    text: 'Use the record page to create an item.',
+    timezone: household.timezone,
+    generatedAt: new Date().toISOString(),
+    rows: [],
+    sources: [],
+    partial: false,
+  });
   const user = userEvent.setup();
   render(<AssistantWorkspace token="token" household={household} />);
   const input = screen.getByRole('textbox', { name: 'Ask your own question' });
   await waitFor(() => expect(input).toHaveProperty('disabled', false));
   await user.type(input, 'Add shopping eggs');
   await user.click(screen.getByRole('button', { name: 'Ask' }));
-  await screen.findByText('Draft shopping item');
-  expect(api.askAssistant).not.toHaveBeenCalled();
+  await screen.findByText('Use the record page to create an item.');
+  expect(api.askAssistant).toHaveBeenCalledTimes(1);
+  expect(api.prepareAssistantDraft).not.toHaveBeenCalled();
   expect(api.createShoppingItem).not.toHaveBeenCalled();
-  await user.click(screen.getByRole('button', { name: 'Review draft' }));
-  await user.click(screen.getByRole('button', { name: 'Confirm and save' }));
-  await screen.findByText('Shopping item saved: Eggs');
-  expect(
-    screen
-      .getByRole('link', { name: 'Open published record' })
-      .getAttribute('href'),
-  ).toBe('/house?view=shopping&household=home&item=saved');
+  expect(screen.queryByText('Draft shopping item')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Confirm and save' })).toBeNull();
 });
 
 test.each([

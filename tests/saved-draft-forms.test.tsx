@@ -1,11 +1,5 @@
 // @vitest-environment jsdom
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
@@ -208,65 +202,55 @@ test('bill restores adjustments and explicitly empty participants instead of def
   expect(api.previewBill).not.toHaveBeenCalled();
 });
 
-test('assistant recovers edited fields with fresh household members and no provider call or automatic write', async () => {
-  const action: api.AssistantActionDraft = {
-    kind: 'shopping',
-    householdId: 'home',
-    timezone: 'Asia/Bangkok',
-    generatedAt: new Date().toISOString(),
-    members,
-    recipientIds: [],
-    unresolvedFields: [],
-    notes: [],
-    fields: {
-      title: 'Eggs',
-      quantity: null,
-      unit: null,
-      note: null,
-      priority: 'normal',
-      assignedBuyerMemberId: null,
-      estimatedPriceMinor: null,
-    },
-  };
-  vi.mocked(api.prepareAssistantDraft).mockResolvedValue({ draft: action });
+test('Assistant restores only an unsent question after explicit resume without automatic calls', async () => {
+  vi.mocked(api.getAssistantConfig).mockResolvedValue({
+    naturalLanguageEnabled: true,
+  } as never);
   const user = userEvent.setup();
   const first = wrap(
     <AssistantWorkspace household={household} token="private-session" />,
   );
-  await waitFor(() => expect(api.getAssistantConfig).toHaveBeenCalled());
-  await user.type(
-    screen.getByLabelText('Ask your own question'),
-    'Add shopping eggs',
-  );
-  await user.click(screen.getByRole('button', { name: 'Ask' }));
-  const title = await screen.findByLabelText('Title');
-  await user.clear(title);
-  await user.type(title, 'Free range eggs');
-  fireEvent.change(screen.getByLabelText('Optional quantity'), {
-    target: { value: '12' },
-  });
+  const input = screen.getByLabelText('Ask your own question');
+  await waitFor(() => expect(input).toHaveProperty('disabled', false));
+  await user.type(input, 'Which bills are due?');
   first.unmount();
   wrap(<AssistantWorkspace household={household} token="private-session" />);
   await user.click(await screen.findByRole('button', { name: 'Resume draft' }));
-  await waitFor(() =>
-    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe(
-      'Free range eggs',
-    ),
+  expect(screen.getByLabelText('Ask your own question')).toHaveProperty(
+    'value',
+    'Which bills are due?',
   );
-  expect(
-    (screen.getByLabelText('Optional quantity') as HTMLInputElement).value,
-  ).toBe('12');
-  expect(api.getMembers).toHaveBeenCalledTimes(1);
+  expect(api.getMembers).not.toHaveBeenCalled();
   expect(api.askAssistant).not.toHaveBeenCalled();
-  expect(api.prepareAssistantDraft).toHaveBeenCalledTimes(1);
+  expect(api.prepareAssistantDraft).not.toHaveBeenCalled();
   expect(api.createShoppingItem).not.toHaveBeenCalled();
-  await user.click(screen.getByRole('button', { name: 'Cancel draft' }));
-  expect(
-    localStorage.getItem(draftKey('account', 'home', 'assistant')),
-  ).toBeNull();
-  expect(
-    localStorage.getItem(
-      draftKey('account', 'home', 'assistant-editor-shopping'),
-    ),
-  ).toBeNull();
+});
+
+test('obsolete Assistant action seeds cannot reopen an editor or invoke an action', async () => {
+  vi.mocked(api.getAssistantConfig).mockResolvedValue({
+    naturalLanguageEnabled: true,
+  } as never);
+  const user = userEvent.setup();
+  const first = wrap(
+    <AssistantWorkspace household={household} token="private-session" />,
+  );
+  const input = screen.getByLabelText('Ask your own question');
+  await waitFor(() => expect(input).toHaveProperty('disabled', false));
+  await user.type(input, 'Old action');
+  first.unmount();
+  const key = draftKey('account', 'home', 'assistant');
+  const snapshot = JSON.parse(localStorage.getItem(key) ?? '{}');
+  snapshot.value.action = JSON.stringify({
+    kind: 'shopping',
+    fields: { title: 'Eggs' },
+    recipientIds: [],
+  });
+  localStorage.setItem(key, JSON.stringify(snapshot));
+  wrap(<AssistantWorkspace household={household} token="private-session" />);
+  await waitFor(() => expect(api.getAssistantConfig).toHaveBeenCalledTimes(2));
+  expect(screen.queryByRole('button', { name: 'Resume draft' })).toBeNull();
+  expect(screen.queryByLabelText('Title')).toBeNull();
+  expect(api.getMembers).not.toHaveBeenCalled();
+  expect(api.prepareAssistantDraft).not.toHaveBeenCalled();
+  expect(api.createShoppingItem).not.toHaveBeenCalled();
 });

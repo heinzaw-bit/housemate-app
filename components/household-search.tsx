@@ -386,11 +386,27 @@ export function HouseholdSearch({
                 }
               >
                 <option value="all">All records</option>
-                {searchTypes.map((kind) => (
-                  <option key={kind} value={kind}>
-                    {labels[kind]}
-                  </option>
-                ))}
+                {searchTypes
+                  .filter(
+                    (kind) =>
+                      !['meal', 'chore', 'shopping', 'poll'].includes(kind),
+                  )
+                  .map((kind) => (
+                    <option key={kind} value={kind}>
+                      {labels[kind]}
+                    </option>
+                  ))}
+                <optgroup label="Earlier household tools">
+                  {searchTypes
+                    .filter((kind) =>
+                      ['meal', 'chore', 'shopping', 'poll'].includes(kind),
+                    )
+                    .map((kind) => (
+                      <option key={kind} value={kind}>
+                        {labels[kind]}
+                      </option>
+                    ))}
+                </optgroup>
               </select>
               <p role="status" className={styles.status}>
                 {loading

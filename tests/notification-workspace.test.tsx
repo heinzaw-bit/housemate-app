@@ -187,6 +187,19 @@ test('settings device refresh preserves edits; quiet hours and categories save o
       .hasAttribute('disabled'),
   ).toBe(true);
   fireEvent.click(screen.getByText(/9 inbox · 8 push categories/));
+  expect(
+    screen.queryByRole('switch', { name: 'chores inbox notifications' }),
+  ).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Earlier household tools' }),
+  );
+  expect(
+    screen.getByRole('switch', { name: 'chores inbox notifications' }),
+  ).toBeTruthy();
+  expect(api.saveNotificationPreferences).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Hide earlier household tools' }),
+  );
   fireEvent.click(
     screen.getByRole('switch', { name: 'Expenses inbox notifications' }),
   );

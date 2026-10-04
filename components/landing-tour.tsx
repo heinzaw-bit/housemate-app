@@ -19,7 +19,7 @@ const views = {
     preview: MoneyPreview,
   },
   house: {
-    label: 'House',
+    label: 'Board',
     title: 'Make everyday teamwork easier.',
     description:
       'Keep chores, shopping, meals, and household plans together so the next step is easy to find.',

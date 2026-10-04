@@ -53,15 +53,21 @@ export function EventWorkspace({
   focusedId = '',
   focusSignal = 0,
   createRequest = 0,
+  compact = false,
 }: {
   household: Household;
   token: string;
   focusedId?: string;
   focusSignal?: number;
   createRequest?: number;
+  compact?: boolean;
 }) {
   const [events, setEvents] = useState<HouseholdEvent[]>([]);
   const [selectedId, setSelectedId] = useState('');
+  const [linkedEvent, setLinkedEvent] = useState<{
+    record: HouseholdEvent;
+    token: string;
+  } | null>(null);
   const [scope, setScope] = useState<'upcoming' | 'past'>('upcoming');
   const [hasMore, setHasMore] = useState(false);
   const [offset, setOffset] = useState(0);
@@ -106,7 +112,30 @@ export function EventWorkspace({
   });
 
   const requestNumber = useRef(0);
-  const selected = events.find((event) => event.id === selectedId) ?? null;
+  const detailRef = useRef<HTMLDivElement>(null);
+  const selected =
+    events.find((event) => event.id === selectedId) ??
+    (linkedEvent?.record.id === selectedId &&
+    linkedEvent.record.householdId === household.id &&
+    linkedEvent.token === token
+      ? linkedEvent.record
+      : null);
+
+  useEffect(() => {
+    if (
+      !selectedId ||
+      !compact ||
+      !window.matchMedia('(max-width: 1023px)').matches
+    )
+      return;
+    detailRef.current?.focus({ preventScroll: true });
+    detailRef.current?.scrollIntoView({
+      block: 'start',
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'instant'
+        : 'smooth',
+    });
+  }, [selectedId, compact]);
 
   useEffect(() => {
     const request = ++requestNumber.current;
@@ -120,7 +149,11 @@ export function EventWorkspace({
           setOffset(next.length);
           setHasMore(next.length === 50);
           setSelectedId((old) =>
-            next.some((event) => event.id === old) ? old : (next[0]?.id ?? ''),
+            (old && old === focusedId) || next.some((event) => event.id === old)
+              ? old
+              : compact
+                ? ''
+                : (next[0]?.id ?? ''),
           );
         },
         (failure) => {
@@ -136,7 +169,7 @@ export function EventWorkspace({
     return () => {
       requestNumber.current += 1;
     };
-  }, [token, household.id, scope]);
+  }, [token, household.id, scope, compact, focusedId]);
 
   useEffect(() => {
     if (createRequest) setFormOpen(true);
@@ -147,6 +180,7 @@ export function EventWorkspace({
     void getEvent(token, household.id, focusedId).then(
       (event) => {
         if (!active) return;
+        setLinkedEvent({ record: event, token });
         setScope(
           new Date(event.startsAt).getTime() < Date.now() ? 'past' : 'upcoming',
         );
@@ -157,7 +191,11 @@ export function EventWorkspace({
         setSelectedId(event.id);
       },
       (failure) => {
-        if (active) setError(message(failure));
+        if (active) {
+          setLinkedEvent(null);
+          setSelectedId('');
+          setError(message(failure));
+        }
       },
     );
     return () => {
@@ -176,7 +214,11 @@ export function EventWorkspace({
       setOffset(next.length);
       setHasMore(next.length === 50);
       setSelectedId((old) =>
-        next.some((event) => event.id === old) ? old : (next[0]?.id ?? ''),
+        (old && old === focusedId) || next.some((event) => event.id === old)
+          ? old
+          : compact
+            ? ''
+            : (next[0]?.id ?? ''),
       );
     } catch (failure) {
       if (request === requestNumber.current) setError(message(failure));
@@ -265,6 +307,9 @@ export function EventWorkspace({
       setEvents((old) =>
         old.map((event) => (event.id === updated.id ? updated : event)),
       );
+      setLinkedEvent((old) =>
+        old?.record.id === updated.id ? { record: updated, token } : old,
+      );
       setNotice('Your attendance was saved.');
     } catch (failure) {
       setError(message(failure));
@@ -287,20 +332,24 @@ export function EventWorkspace({
         resumeDisabled={loading || !!error}
       />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="font-heading text-xl">Events</h2>
-          <p className="text-sm text-muted-foreground">
-            Plan together and see who is going.
-          </p>
-        </div>
-        <div className="flex gap-2">
+        {!compact && (
+          <div>
+            <h2 className="font-heading text-xl">Events</h2>
+            <p className="text-sm text-muted-foreground">
+              Plan together and see who is going.
+            </p>
+          </div>
+        )}
+        <div className={`flex gap-2 ${compact ? 'ml-auto' : ''}`}>
           <Button
             variant="outline"
             size="sm"
             onClick={() => void refresh()}
             disabled={loading}
+            aria-label="Refresh events"
+            title="Refresh events"
           >
-            <RefreshCw size={15} aria-hidden="true" /> Refresh
+            <RefreshCw size={15} aria-hidden="true" /> {!compact && 'Refresh'}
           </Button>
           <Button
             size="sm"
@@ -309,7 +358,7 @@ export function EventWorkspace({
               setFormOpen((old) => !old);
             }}
           >
-            {formOpen ? 'Close form' : 'Create event'}
+            {formOpen ? 'Close form' : 'New event'}
           </Button>
         </div>
       </div>
@@ -418,7 +467,10 @@ export function EventWorkspace({
           size="sm"
           variant={scope === 'upcoming' ? 'default' : 'outline'}
           aria-pressed={scope === 'upcoming'}
-          onClick={() => setScope('upcoming')}
+          onClick={() => {
+            setSelectedId('');
+            setScope('upcoming');
+          }}
         >
           Upcoming
         </Button>
@@ -426,7 +478,10 @@ export function EventWorkspace({
           size="sm"
           variant={scope === 'past' ? 'default' : 'outline'}
           aria-pressed={scope === 'past'}
-          onClick={() => setScope('past')}
+          onClick={() => {
+            setSelectedId('');
+            setScope('past');
+          }}
         >
           Past
         </Button>
@@ -436,7 +491,7 @@ export function EventWorkspace({
           Loading events…
         </p>
       )}
-      {!loading && events.length === 0 && !error && (
+      {!loading && events.length === 0 && !selected && !error && (
         <Card>
           <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
             <CalendarDays
@@ -451,43 +506,60 @@ export function EventWorkspace({
           </CardContent>
         </Card>
       )}
-      {events.length > 0 && (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,1fr)]">
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                {scope === 'upcoming' ? 'Coming up' : 'Past events'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {events.map((event) => (
-                <button
-                  type="button"
-                  key={event.id}
-                  onClick={() => setSelectedId(event.id)}
-                  aria-current={selectedId === event.id ? 'true' : undefined}
-                  className={`w-full rounded-xl border p-3 text-left hover:bg-muted/50 ${selectedId === event.id ? 'border-primary bg-primary/5' : 'border-border'}`}
-                >
-                  <strong className="block">{event.title}</strong>
-                  <span className="text-sm text-muted-foreground">
-                    {time(event.startsAt, household.timezone)} ·{' '}
-                    {event.counts.going} going
-                  </span>
-                </button>
-              ))}
-              {hasMore && (
-                <Button
-                  variant="outline"
-                  disabled={loadingMore}
-                  onClick={() => void loadMore()}
-                >
-                  {loadingMore ? 'Loading…' : 'Load more'}
-                </Button>
+      {(events.length > 0 || selected) && (
+        <div
+          className={`grid gap-4 ${(selected && events.length > 0) || !compact ? 'lg:grid-cols-[minmax(0,1fr)_minmax(300px,1fr)]' : ''}`}
+        >
+          {events.length > 0 && (
+            <Card className={compact && selected ? 'max-lg:hidden' : undefined}>
+              {!compact && (
+                <CardHeader>
+                  <CardTitle>
+                    {scope === 'upcoming' ? 'Coming up' : 'Past events'}
+                  </CardTitle>
+                </CardHeader>
               )}
-            </CardContent>
-          </Card>
+              <CardContent className="space-y-2">
+                {events.map((event) => (
+                  <button
+                    type="button"
+                    key={event.id}
+                    onClick={() => setSelectedId(event.id)}
+                    aria-current={selectedId === event.id ? 'true' : undefined}
+                    className={`w-full rounded-xl border p-3 text-left hover:bg-muted/50 ${selectedId === event.id ? 'border-primary bg-primary/5' : 'border-border'}`}
+                  >
+                    <strong className="block break-words">{event.title}</strong>
+                    <span className="text-sm text-muted-foreground">
+                      {time(event.startsAt, household.timezone)} ·{' '}
+                      {event.counts.going} going
+                    </span>
+                  </button>
+                ))}
+                {hasMore && (
+                  <Button
+                    variant="outline"
+                    disabled={loadingMore}
+                    onClick={() => void loadMore()}
+                  >
+                    {loadingMore ? 'Loading…' : 'Load more'}
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          )}
           {selected && (
-            <Card>
+            <Card ref={detailRef} tabIndex={-1} className="scroll-mt-6">
+              {compact && (
+                <CardContent className="lg:hidden">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedId('')}
+                  >
+                    Back to events
+                  </Button>
+                </CardContent>
+              )}
               <CardHeader>
                 <CardTitle>{selected.title}</CardTitle>
               </CardHeader>

@@ -2,19 +2,16 @@
 import {
   act,
   cleanup,
-  fireEvent,
   render,
   screen,
   waitFor,
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import axe from 'axe-core';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { AssistantWorkspace } from '../components/assistant-workspace';
 import {
   ApiRequestError,
-  type AssistantActionDraft,
   type AssistantAnswer,
   type Household,
 } from '../lib/api';
@@ -103,10 +100,11 @@ test('typed questions guard unsent work, expose limits, and clear only after suc
   expect(hasPendingWork()).toBe(true);
   expect(screen.getByRole('button', { name: 'Ask' })).toHaveProperty(
     'disabled',
-    true,
+    false,
   );
   expect(mocks.ask).not.toHaveBeenCalled();
-  await user.click(screen.getByRole('checkbox'));
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  expect(screen.getByText(/By asking a general question/)).toBeTruthy();
   mocks.ask.mockRejectedValueOnce(
     new ApiRequestError(
       429,
@@ -126,6 +124,43 @@ test('typed questions guard unsent work, expose limits, and clear only after suc
   await screen.findByText('You owe THB 1.01.');
   expect(input).toHaveProperty('value', '');
   expect(hasPendingWork()).toBe(false);
+});
+
+test('answers separate the exact money summary from context and preserve clarification input', async () => {
+  mocks.ask.mockResolvedValueOnce({
+    ...answer,
+    text: 'You owe THB 1.01. Unpaid provider bills are excluded. Recorded transfers are manual.',
+  });
+  const user = userEvent.setup();
+  const view = render(
+    <AssistantWorkspace household={household} token="token" />,
+  );
+  await user.click(
+    screen.getByRole('button', { name: 'My balance: How much do I owe?' }),
+  );
+  await screen.findByRole('heading', { name: 'Your balance' });
+  expect(screen.getByText('You owe THB 1.01.')).toBeTruthy();
+  expect(
+    screen.getByText(
+      'Unpaid provider bills are excluded. Recorded transfers are manual.',
+    ),
+  ).toBeTruthy();
+  expect(view.container.querySelector('article')?.textContent).toContain(
+    'THB 1.01.',
+  );
+  mocks.ask.mockResolvedValueOnce({
+    ...answer,
+    kind: 'clarification',
+    topic: 'unsupported',
+    text: 'Which record do you mean?',
+  });
+  const input = screen.getByRole('textbox', { name: 'Ask your own question' });
+  await user.type(input, 'Tell me about that');
+  await user.click(screen.getByRole('button', { name: 'Ask' }));
+  await screen.findByRole('heading', { name: 'Let’s clarify' });
+  expect(input).toHaveProperty('value', 'Tell me about that');
+  expect(document.activeElement).toBe(input);
+  expect(hasPendingWork()).toBe(true);
 });
 
 test('cancelling and switching households cannot show a late answer', async () => {
@@ -202,7 +237,7 @@ test('untrusted household text is rendered as text and truncated answers link to
   expect(screen.getByText(/limited set of records/)).toBeTruthy();
 });
 
-test('switching household resets consent and unsent private input', async () => {
+test('switching household resets unsent private input without sending it', async () => {
   const user = userEvent.setup();
   const view = render(
     <AssistantWorkspace household={household} token="token" />,
@@ -210,7 +245,6 @@ test('switching household resets consent and unsent private input', async () => 
   const input = screen.getByRole('textbox', { name: 'Ask your own question' });
   await waitFor(() => expect(input).toHaveProperty('disabled', false));
   await user.type(input, 'How much do I owe?');
-  await user.click(screen.getByRole('checkbox'));
   view.rerender(
     <AssistantWorkspace
       household={{ ...household, id: 'other' }}
@@ -221,11 +255,11 @@ test('switching household resets consent and unsent private input', async () => 
   expect(screen.queryByRole('checkbox')).toBeNull();
   await waitFor(() => expect(input).toHaveProperty('disabled', false));
   await user.type(input, 'How much do I owe?');
-  expect(screen.getByRole('checkbox')).toHaveProperty('checked', false);
+  expect(screen.queryByRole('checkbox')).toBeNull();
   expect(mocks.ask).not.toHaveBeenCalled();
 });
 
-test('keyboard submission still requires consent and cancellation ignores a late reply', async () => {
+test('keyboard submission has no separate checkbox and cancellation ignores a late reply', async () => {
   const user = userEvent.setup();
   let resolve: (result: AssistantAnswer) => void = () => {};
   mocks.ask.mockImplementationOnce(
@@ -238,23 +272,39 @@ test('keyboard submission still requires consent and cancellation ignores a late
   const input = screen.getByRole('textbox', { name: 'Ask your own question' });
   await waitFor(() => expect(input).toHaveProperty('disabled', false));
   await user.type(input, 'Who is cooking today?');
-  await user.keyboard('{Control>}{Enter}{/Control}');
+  await user.keyboard('{Shift>}{Enter}{/Shift}');
   expect(mocks.ask).not.toHaveBeenCalled();
-  await user.click(screen.getByRole('checkbox'));
-  await user.click(input);
-  await user.keyboard('{Meta>}{Enter}{/Meta}');
+  expect(input).toHaveProperty('value', 'Who is cooking today?\n');
+  await user.keyboard('{Enter}');
   expect(mocks.ask).toHaveBeenCalledTimes(1);
+  expect(
+    screen.getByRole('status', { name: 'Assistant is thinking' }),
+  ).toBeTruthy();
+  expect(screen.getByText('Looking that up…')).toBeTruthy();
+  const composer = screen.getByRole('region', { name: 'Ask HouseMate' });
+  const loading = screen.getByRole('status', { name: 'Assistant is thinking' });
+  expect(composer.contains(loading)).toBe(true);
+  expect(input.parentElement?.contains(loading)).toBe(true);
+  expect(screen.queryByRole('region', { name: 'Latest answer' })).toBeNull();
+  expect(screen.getByRole('textbox')).toHaveProperty('disabled', true);
   const signal = mocks.ask.mock.calls[0]?.[3] as AbortSignal;
   await user.click(screen.getByRole('button', { name: 'Cancel question' }));
   expect(signal.aborted).toBe(true);
-  expect(input).toHaveProperty('value', 'Who is cooking today?');
+  expect(input).toHaveProperty('value', 'Who is cooking today?\n');
+  expect(
+    screen.queryByRole('status', { name: 'Assistant is thinking' }),
+  ).toBeNull();
+  expect(document.activeElement).toBe(input);
   await act(async () => resolve(answer));
   expect(screen.queryByText('You owe THB 1.01.')).toBeNull();
   await user.click(
     screen.getByRole('button', { name: 'Catch me up: What needs attention?' }),
   );
   await screen.findByText('You owe THB 1.01.');
-  expect(input).toHaveProperty('value', 'Who is cooking today?');
+  expect(
+    composer.contains(screen.getByRole('region', { name: 'Latest answer' })),
+  ).toBe(false);
+  expect(input).toHaveProperty('value', 'Who is cooking today?\n');
 });
 
 test('record previews expand without losing any source links or making extra requests', async () => {
@@ -322,12 +372,12 @@ test('latest answer stays below the composer, earlier replies expand, and cleari
   expect(mocks.ask).toHaveBeenCalledTimes(2);
 });
 
-test('meal planning starts from a current meal answer and keeps the selected household', async () => {
+test('bill shortcut follows the chat and keeps the selected household', async () => {
   mocks.ask.mockResolvedValue({
     ...answer,
-    topic: 'meals',
-    text: 'Your upcoming meals',
-    sources: [{ label: 'Meals', href: '/house?view=meals&household=home' }],
+    topic: 'bills',
+    text: 'Your upcoming bills',
+    sources: [{ label: 'Bills', href: '/money?view=bills&household=home' }],
   });
   const user = userEvent.setup();
   const view = render(
@@ -339,322 +389,33 @@ test('meal planning starts from a current meal answer and keeps the selected hou
       .getByRole('textbox', { name: 'Ask your own question' })
       .compareDocumentPosition(
         screen.getByRole('button', {
-          name: 'Meal plans: What meals are coming up?',
+          name: 'Bills to watch: Which bills are due?',
         }),
       ) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   await user.click(
     screen.getByRole('button', {
-      name: 'Meal plans: What meals are coming up?',
+      name: 'Bills to watch: Which bills are due?',
     }),
   );
-  await screen.findByText('Your upcoming meals');
-  expect(
-    screen.getByRole('link', { name: 'Plan a meal' }).getAttribute('href'),
-  ).toBe('/house?view=meals&household=home&add=1');
-  expect(mocks.ask.mock.calls[0]?.[2]).toEqual({ topic: 'meals' });
+  await screen.findByText('Your upcoming bills');
+  expect(screen.getByRole('link', { name: 'Bills' }).getAttribute('href')).toBe(
+    '/money?view=bills&household=home',
+  );
+  expect(screen.queryByRole('button', { name: /Meal plans/ })).toBeNull();
+  expect(screen.queryByRole('link', { name: 'Plan a meal' })).toBeNull();
+  expect(mocks.ask.mock.calls[0]?.[2]).toEqual({ topic: 'bills' });
   expect(view.container.querySelectorAll('textarea')).toHaveLength(1);
 });
 
-const mealDraft: AssistantActionDraft = {
-  kind: 'meal',
-  householdId: 'home',
-  timezone: 'Asia/Bangkok',
-  generatedAt: '2026-10-01T00:00:00Z',
-  fields: {
-    mealType: 'dinner',
-    question: 'Who is joining dinner?',
-    startsAtLocal: '2026-10-02T19:00',
-    responseDeadlineLocal: '',
-  },
-  members: [
-    { id: 'one', displayName: 'Aye' },
-    { id: 'two', displayName: 'Hein' },
-  ],
-  recipientIds: ['one', 'two'],
-  unresolvedFields: ['When should responses close?'],
-  notes: ['Unsaved draft.'],
-};
-const announcementDraft: AssistantActionDraft = {
-  ...mealDraft,
-  kind: 'announcement',
-  unresolvedFields: [],
-  fields: {
-    title: 'Dinner is ready',
-    body: 'Dinner is ready. Come to the kitchen.',
-    priority: 'normal',
-    requiresAcknowledgement: false,
-    expiresAtLocal: null,
-  },
-};
-async function requestDraft(
-  draft: AssistantActionDraft,
-  text = 'Plan dinner tomorrow at 7pm',
-) {
+test('legacy action availability does not enable drafting or typed questions without AI', async () => {
   mocks.config.mockResolvedValue({
     naturalLanguageEnabled: false,
     actionDraftsEnabled: true,
   });
-  mocks.draft.mockResolvedValue({ draft });
-  const user = userEvent.setup();
-  const view = render(
-    <AssistantWorkspace household={household} token="token" />,
-  );
-  const input = screen.getByRole('textbox', { name: 'Ask your own question' });
-  await waitFor(() => expect(input).toHaveProperty('disabled', false));
-  await user.type(input, text);
-  await user.click(screen.getByRole('button', { name: 'Ask' }));
-  await screen.findByRole('heading', {
-    name: draft.kind === 'meal' ? 'Draft meal check' : 'Draft announcement',
-  });
-  return { user, view, input };
-}
-function setDeadline(value = '2026-10-02T18:00') {
-  fireEvent.change(screen.getByLabelText('Responses close (Asia/Bangkok)'), {
-    target: { value },
-  });
-}
-
-test('meal requests draft locally without Gemini consent; edits and review never publish', async () => {
-  const { user, input } = await requestDraft(mealDraft);
-  expect(mocks.ask).not.toHaveBeenCalled();
-  expect(mocks.draft).toHaveBeenCalledWith(
-    'token',
-    'home',
-    'Plan dinner tomorrow at 7pm',
-    expect.any(AbortSignal),
-  );
-  expect(hasPendingWork()).toBe(true);
-  expect(input).toHaveProperty('disabled', true);
-  const accessibility = await axe.run(document.body, {
-    rules: { 'color-contrast': { enabled: false }, region: { enabled: false } },
-  });
-  expect(accessibility.violations).toEqual([]);
-  setDeadline('2026-10-02T20:00');
-  await user.click(screen.getByRole('button', { name: 'Review meal check' }));
-  expect(screen.getByRole('alert').textContent).toContain('before the meal');
-  setDeadline();
-  await user.click(screen.getByRole('checkbox', { name: 'Hein' }));
-  await user.click(screen.getByRole('button', { name: 'Review meal check' }));
-  expect(screen.getByText('Recipients (1): Aye')).toBeTruthy();
-  expect(mocks.meal).not.toHaveBeenCalled();
-  await user.click(screen.getByRole('button', { name: 'Edit draft' }));
-  expect(
-    screen.getByLabelText('Responses close (Asia/Bangkok)'),
-  ).toHaveProperty('value', '2026-10-02T18:00');
-  await user.click(screen.getByRole('button', { name: 'Review meal check' }));
-  await user.click(screen.getByRole('button', { name: 'Confirm and publish' }));
-  await screen.findByText('Meal check published: Who is joining dinner?');
-  expect(mocks.meal).toHaveBeenCalledTimes(1);
-  expect(mocks.meal.mock.calls[0]).toEqual([
-    'token',
-    'home',
-    {
-      ...mealDraft.fields,
-      responseDeadlineLocal: '2026-10-02T18:00',
-      participantIds: ['one'],
-      cookingRoles: [],
-      idempotencyKey: expect.any(String),
-    },
-  ]);
-  expect(
-    screen
-      .getByRole('link', { name: 'Open published record' })
-      .getAttribute('href'),
-  ).toBe('/house?view=meals&household=home&meal=meal-record');
-  expect(hasPendingWork()).toBe(false);
-});
-
-test('targeted announcements require recipients and cancel never publishes', async () => {
-  const { user, input } = await requestDraft(
-    { ...announcementDraft, recipientIds: [] },
-    'Announce dinner is ready only for Aye',
-  );
-  await user.click(screen.getByRole('button', { name: 'Review announcement' }));
-  expect(screen.getByRole('alert').textContent).toContain(
-    'Choose at least one',
-  );
-  await user.click(screen.getByRole('checkbox', { name: 'Aye' }));
-  await user.click(screen.getByRole('button', { name: 'Review announcement' }));
-  expect(screen.getByText('Recipients (1): Aye')).toBeTruthy();
-  await user.click(screen.getByRole('button', { name: 'Cancel draft' }));
-  expect(mocks.announcement).not.toHaveBeenCalled();
-  expect(mocks.ask).not.toHaveBeenCalled();
-  expect(input).toHaveProperty('disabled', false);
-  expect(document.activeElement).toBe(input);
-  expect(hasPendingWork()).toBe(false);
-});
-
-test('interrupted announcement confirmation freezes and retries exactly the original payload and key', async () => {
-  mocks.announcement.mockRejectedValueOnce(
-    new ApiRequestError(0, 'NETWORK_ERROR', 'Connection interrupted.'),
-  );
-  const { user } = await requestDraft(
-    announcementDraft,
-    'Announce dinner is ready',
-  );
-  await user.click(
-    screen.getByRole('checkbox', { name: 'Ask recipients to acknowledge' }),
-  );
-  await user.selectOptions(screen.getByLabelText('Priority'), 'important');
-  await user.click(screen.getByRole('button', { name: 'Review announcement' }));
-  await user.click(screen.getByRole('button', { name: 'Confirm and publish' }));
-  await screen.findByRole('alert');
-  expect(mocks.announcement).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole('button', { name: 'Edit draft' })).toHaveProperty(
-    'disabled',
-    true,
-  );
-  expect(screen.getByRole('button', { name: 'Cancel draft' })).toHaveProperty(
-    'disabled',
-    true,
-  );
-  const first = mocks.announcement.mock.calls[0];
-  mocks.announcement.mockRejectedValueOnce(
-    new ApiRequestError(400, 'INVALID_RECIPIENTS', 'Audience changed.'),
-  );
-  await user.click(screen.getByRole('button', { name: 'Retry publication' }));
-  await screen.findByText('Audience changed.');
-  expect(screen.getByRole('button', { name: 'Edit draft' })).toHaveProperty(
-    'disabled',
-    true,
-  );
-  expect(mocks.announcement.mock.calls[1]).toEqual(first);
-  await user.click(screen.getByRole('button', { name: 'Retry publication' }));
-  await screen.findByText('Announcement published: Dinner is ready');
-  expect(mocks.announcement.mock.calls[2]).toEqual(first);
-  expect(first[2]).toMatchObject({
-    priority: 'important',
-    requiresAcknowledgement: true,
-    recipientIds: ['one', 'two'],
-  });
-  expect(
-    screen
-      .getByRole('link', { name: 'Open published record' })
-      .getAttribute('href'),
-  ).toBe(
-    '/house?view=announcements&household=home&announcement=announcement-record',
-  );
-});
-
-test('definitive validation failure permits corrections but lost access clears private draft', async () => {
-  mocks.meal.mockRejectedValueOnce(
-    new ApiRequestError(400, 'INVALID_TIME', 'Deadline must be future.'),
-  );
-  const { user } = await requestDraft(mealDraft);
-  setDeadline();
-  await user.click(screen.getByRole('button', { name: 'Review meal check' }));
-  await user.click(screen.getByRole('button', { name: 'Confirm and publish' }));
-  await screen.findByRole('alert');
-  expect(
-    screen.getByRole('heading', { name: 'Draft meal check' }),
-  ).toBeTruthy();
-  const firstKey = mocks.meal.mock.calls[0][2].idempotencyKey;
-  setDeadline('2026-10-02T17:00');
-  mocks.meal.mockRejectedValueOnce(
-    new ApiRequestError(404, 'NOT_FOUND', 'Household not found.'),
-  );
-  await user.click(screen.getByRole('button', { name: 'Review meal check' }));
-  await user.click(screen.getByRole('button', { name: 'Confirm and publish' }));
-  await screen.findByText('Household not found.');
-  expect(mocks.meal.mock.calls[1][2].idempotencyKey).not.toBe(firstKey);
-  expect(screen.queryByText('Who is joining dinner?')).toBeNull();
-  expect(
-    screen.queryByRole('heading', { name: 'Draft meal check' }),
-  ).toBeNull();
-  expect(hasPendingWork()).toBe(false);
-});
-
-test('general questions still require consent after local draft routing and unsupported actions never fall back', async () => {
-  mocks.config.mockResolvedValue({
-    naturalLanguageEnabled: true,
-    actionDraftsEnabled: true,
-  });
-  const user = userEvent.setup();
   render(<AssistantWorkspace household={household} token="token" />);
-  const input = screen.getByRole('textbox', { name: 'Ask your own question' });
-  await waitFor(() => expect(input).toHaveProperty('disabled', false));
-  await user.type(input, 'How much do I owe?');
-  await user.click(screen.getByRole('button', { name: 'Ask' }));
-  await screen.findByRole('alert');
-  expect(mocks.ask).not.toHaveBeenCalled();
-  expect(input).toHaveProperty('value', 'How much do I owe?');
-  await user.click(screen.getByRole('checkbox'));
-  await user.click(screen.getByRole('button', { name: 'Ask' }));
-  await screen.findByText('You owe THB 1.01.');
-  mocks.draft.mockRejectedValueOnce(
-    new ApiRequestError(
-      400,
-      'ASSISTANT_ACTION_UNSUPPORTED',
-      'Use one command at a time.',
-    ),
-  );
-  await user.type(input, 'Split a bill');
-  await user.click(screen.getByRole('button', { name: 'Ask' }));
-  await screen.findByText('Use one command at a time.');
-  expect(mocks.ask).toHaveBeenCalledTimes(1);
-});
-
-test('switching accounts during publication ignores late success and clears the private draft', async () => {
-  let resolve: (value: { id: string }) => void = () => {};
-  mocks.announcement.mockImplementationOnce(
-    () =>
-      new Promise((done) => {
-        resolve = done;
-      }),
-  );
-  const { user, view } = await requestDraft(
-    announcementDraft,
-    'Announce dinner is ready',
-  );
-  await user.click(screen.getByRole('button', { name: 'Review announcement' }));
-  await user.click(screen.getByRole('button', { name: 'Confirm and publish' }));
-  await screen.findByRole('button', { name: 'Publishing…' });
-  view.rerender(
-    <AssistantWorkspace household={household} token="other-account" />,
-  );
-  expect(
-    screen.queryByRole('heading', { name: 'Review before publishing' }),
-  ).toBeNull();
-  await act(async () => resolve({ id: 'old-private-record' }));
-  expect(
-    screen.queryByRole('link', { name: 'Open published record' }),
-  ).toBeNull();
-  expect(hasPendingWork()).toBe(false);
-});
-
-test('switching households cancels draft preparation and rejects a late private result', async () => {
-  let resolve: (value: { draft: AssistantActionDraft }) => void = () => {};
-  mocks.config.mockResolvedValue({
-    naturalLanguageEnabled: false,
-    actionDraftsEnabled: true,
-  });
-  mocks.draft.mockImplementationOnce(
-    () =>
-      new Promise((done) => {
-        resolve = done;
-      }),
-  );
-  const user = userEvent.setup();
-  const view = render(
-    <AssistantWorkspace household={household} token="token" />,
-  );
-  const input = screen.getByRole('textbox', { name: 'Ask your own question' });
-  await waitFor(() => expect(input).toHaveProperty('disabled', false));
-  await user.type(input, 'Announce dinner is ready');
-  await user.click(screen.getByRole('button', { name: 'Ask' }));
-  const signal = mocks.draft.mock.calls[0][3] as AbortSignal;
-  view.rerender(
-    <AssistantWorkspace
-      household={{ ...household, id: 'other' }}
-      token="token"
-    />,
-  );
-  expect(signal.aborted).toBe(true);
-  await act(async () => resolve({ draft: announcementDraft }));
-  expect(
-    screen.queryByRole('heading', { name: 'Draft announcement' }),
-  ).toBeNull();
-  expect(mocks.announcement).not.toHaveBeenCalled();
-  expect(mocks.ask).not.toHaveBeenCalled();
+  await screen.findByText(/once AI setup is complete/);
+  expect(screen.getByRole('textbox')).toHaveProperty('disabled', true);
+  expect(screen.queryByText(/Draft commands/)).toBeNull();
+  expect(mocks.draft).not.toHaveBeenCalled();
 });

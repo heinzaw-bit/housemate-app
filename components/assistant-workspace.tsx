@@ -6,26 +6,21 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   ApiRequestError,
-  type AssistantActionDraft,
   type AssistantAnswer,
   type AssistantTopic,
   askAssistant,
   getAssistantConfig,
-  getMembers,
   type Household,
-  prepareAssistantDraft,
 } from '@/lib/api';
-import { readAssistantDraft } from '@/lib/assistant-draft-storage';
 import { moneyCreateHref } from '@/lib/dashboard';
 import { useLeaveGuard } from '@/lib/pending-work';
-import { AssistantDraftReview } from './assistant-draft-review';
 import styles from './assistant-workspace.module.css';
 import { HouseMateMascot } from './housemate-mascot';
 import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
 const questions: { topic: AssistantTopic; label: string; title: string }[] = [
   { topic: 'summary', label: 'What needs attention?', title: 'Catch me up' },
-  { topic: 'meals', label: 'What meals are coming up?', title: 'Meal plans' },
+  { topic: 'bills', label: 'Which bills are due?', title: 'Bills to watch' },
   { topic: 'balance', label: 'How much do I owe?', title: 'My balance' },
 ];
 interface Turn {
@@ -42,22 +37,7 @@ export function AssistantWorkspace({
   token: string;
 }) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
-  const [actionsEnabled, setActionsEnabled] = useState(false);
-  const [draft, setDraft] = useState<{
-    value: AssistantActionDraft;
-    token: string;
-    id: number;
-  } | null>(null);
-  const scope = useRef({ token, householdId: household.id });
-  scope.current = { token, householdId: household.id };
-  const activeDraft =
-    draft?.token === token &&
-    draft.value.householdId === household.id &&
-    draft.value.timezone === household.timezone
-      ? draft
-      : null;
   const [message, setMessage] = useState('');
-  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -69,89 +49,20 @@ export function AssistantWorkspace({
   const earlier = turns.slice(0, -1).reverse();
   const current = useRef<AbortController | null>(null);
   const nextId = useRef(0);
-  const [recovering, setRecovering] = useState(false);
-  const [resumeSavedFields, setResumeSavedFields] = useState(false);
-  useLeaveGuard(!!message.trim() || busy || !!activeDraft);
+  useLeaveGuard(!!message.trim() || busy);
 
   const savedDraft = useSavedDraft({
     kind: 'assistant',
-    relatedKinds: [
-      'meal',
-      'announcement',
-      'shopping',
-      'chore',
-      'expense',
-      'bill',
-    ].map((kind) => `assistant-editor-${kind}`),
-    enabled: !!message.trim() || !!activeDraft,
-    value: {
-      message,
-      action: JSON.stringify(
-        activeDraft
-          ? {
-              kind: activeDraft.value.kind,
-              fields: activeDraft.value.fields,
-              recipientIds: activeDraft.value.recipientIds,
-            }
-          : null,
-      ),
-    },
-    validate(snapshot) {
-      try {
-        readAssistantDraft(snapshot.action);
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    restore(snapshot) {
-      setMessage(snapshot.message);
-      const action = readAssistantDraft(snapshot.action);
-      if (!action) return;
-      setRecovering(true);
-      void getMembers(token, household.id)
-        .then((members) => {
-          if (
-            scope.current.token !== token ||
-            scope.current.householdId !== household.id
-          )
-            return;
-          setResumeSavedFields(true);
-          setDraft({
-            value: {
-              ...action,
-              householdId: household.id,
-              timezone: household.timezone,
-              generatedAt: new Date().toISOString(),
-              members: members.map(({ id, displayName }) => ({
-                id,
-                displayName,
-              })),
-              unresolvedFields: [],
-              notes: [
-                'Restored from this device. Check members, dates and amounts before confirming.',
-              ],
-            } as AssistantActionDraft,
-            token,
-            id: ++nextId.current,
-          });
-        })
-        .catch(() =>
-          setError(
-            'Reconnect to recover the action draft and check household access. Reload to try again.',
-          ),
-        )
-        .finally(() => setRecovering(false));
-    },
+    enabled: !!message.trim(),
+    value: { message, action: 'null' },
+    validate: (snapshot) => snapshot.action === 'null',
+    restore: (snapshot) => setMessage(snapshot.message),
   });
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: timezone changes invalidate local-time drafts and pending preparation.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: timezone changes invalidate saved questions and pending answers.
   useEffect(() => {
     const controller = new AbortController();
     setEnabled(null);
-    setActionsEnabled(false);
-    setDraft(null);
-    setPrivacyAcknowledged(false);
     setMessage('');
     setBusy(false);
     setStatus('');
@@ -162,7 +73,6 @@ export function AssistantWorkspace({
       .then((config) => {
         if (!controller.signal.aborted) {
           setEnabled(config.naturalLanguageEnabled);
-          setActionsEnabled(config.actionDraftsEnabled === true);
         }
       })
       .catch(() => {
@@ -178,20 +88,14 @@ export function AssistantWorkspace({
     };
   }, [token, household.id, household.timezone]);
 
-  const hadDraft = useRef(false);
+  const hadWork = useRef(false);
   useEffect(() => {
-    if (hadDraft.current && !activeDraft && (enabled || actionsEnabled))
-      questionInput.current?.focus();
-    hadDraft.current = !!activeDraft;
-  }, [activeDraft, enabled, actionsEnabled]);
+    if (hadWork.current && !busy && enabled) questionInput.current?.focus();
+    hadWork.current = busy;
+  }, [busy, enabled]);
 
   function submitQuestion() {
-    if (
-      (actionsEnabled || (enabled && privacyAcknowledged)) &&
-      message.trim() &&
-      !current.current &&
-      !activeDraft
-    )
+    if (enabled && message.trim() && !current.current)
       void ask(
         { message: message.trim(), privacyAcknowledged: true },
         message.trim(),
@@ -204,10 +108,10 @@ export function AssistantWorkspace({
       | { message: string; topic?: never; privacyAcknowledged: true },
     label: string,
   ) {
-    if (current.current || activeDraft) return;
+    if (current.current) return;
     if (question.message && savedDraft.pending) {
       setError(
-        'Resume or discard your saved draft before starting another question or action.',
+        'Resume or discard your saved question before starting another question.',
       );
       return;
     }
@@ -218,35 +122,6 @@ export function AssistantWorkspace({
     setError('');
     setStatus('Checking household records…');
     try {
-      if (question.message && actionsEnabled) {
-        const prepared = await prepareAssistantDraft(
-          token,
-          household.id,
-          question.message,
-          controller.signal,
-        );
-        if (controller.signal.aborted) return;
-        if (prepared.draft) {
-          if (prepared.draft.householdId !== household.id)
-            throw new Error('The draft does not belong to this household.');
-          setDraft({ value: prepared.draft, token, id: ++nextId.current });
-          setResumeSavedFields(false);
-          setMessage('');
-          setStatus(
-            'Draft ready. Complete the details, review and confirm to save.',
-          );
-          return;
-        }
-        if (!enabled || !privacyAcknowledged) {
-          setError(
-            enabled
-              ? 'This is a general question. Confirm the Gemini privacy notice before sending it. Action drafts stay in HouseMate.'
-              : 'Try “Plan dinner tomorrow at 7pm” or “Announce that dinner is ready.” General questions are awaiting AI setup.',
-          );
-          setStatus('');
-          return;
-        }
-      }
       const answer = await askAssistant(
         token,
         household.id,
@@ -258,7 +133,7 @@ export function AssistantWorkspace({
       setTurns((previous) =>
         [...previous, { id, question: label, answer }].slice(-6),
       );
-      if (question.message) {
+      if (question.message && answer.kind === 'answer') {
         savedDraft.clear();
         setMessage('');
       }
@@ -276,8 +151,6 @@ export function AssistantWorkspace({
         savedDraft.clear();
         setTurns([]);
         setEnabled(false);
-        setActionsEnabled(false);
-        setDraft(null);
       }
       setError(
         failure instanceof Error
@@ -296,21 +169,18 @@ export function AssistantWorkspace({
   function clearAnswers() {
     setTurns([]);
     setStatus('Answers cleared.');
-    if (enabled || actionsEnabled) questionInput.current?.focus();
+    if (enabled) questionInput.current?.focus();
     else firstSuggestion.current?.focus();
   }
 
   return (
     <div className={`content-inner ${styles.workspace}`}>
-      <SavedDraftNotice
-        draft={savedDraft}
-        disabled={busy || recovering || !!activeDraft}
-      />
+      <SavedDraftNotice draft={savedDraft} disabled={busy} />
       <header className={styles.header}>
         <HouseHelper />
         <div>
           <h1>What can I help with?</h1>
-          <p>{household.name} · Questions, meal plans &amp; money</p>
+          <p>{household.name} · Household questions &amp; money</p>
         </div>
       </header>
 
@@ -324,33 +194,64 @@ export function AssistantWorkspace({
           <label className={styles.srOnly} htmlFor="assistant-question">
             Ask your own question
           </label>
-          <textarea
-            id="assistant-question"
-            ref={questionInput}
-            className={styles.input}
-            rows={4}
-            maxLength={1000}
-            value={message}
-            disabled={(!enabled && !actionsEnabled) || busy || !!activeDraft}
-            onChange={(event) => setMessage(event.target.value)}
-            onKeyDown={(event) => {
-              if (
-                (event.ctrlKey || event.metaKey) &&
-                event.key === 'Enter' &&
-                !event.nativeEvent.isComposing
-              ) {
-                event.preventDefault();
-                submitQuestion();
-              }
-            }}
-            placeholder="Ask a question, or draft a meal, shopping item, chore, expense or bill…"
-            aria-describedby="assistant-privacy"
-          />
+          <div className={styles.inputArea}>
+            <textarea
+              id="assistant-question"
+              ref={questionInput}
+              className={`${styles.input} ${busy ? styles.inputBusy : ''}`}
+              rows={4}
+              enterKeyHint="send"
+              maxLength={1000}
+              value={message}
+              disabled={!enabled || busy}
+              onChange={(event) => setMessage(event.target.value)}
+              onKeyDown={(event) => {
+                if (
+                  event.key === 'Enter' &&
+                  !event.shiftKey &&
+                  !event.nativeEvent.isComposing
+                ) {
+                  event.preventDefault();
+                  submitQuestion();
+                }
+              }}
+              placeholder="Ask about your household, bills, balance or upcoming events…"
+              aria-describedby="assistant-sharing-notice"
+            />
+            {busy && (
+              <div
+                className={styles.thinking}
+                role="status"
+                aria-label="Assistant is thinking"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                <span className={styles.thinkingMascot} aria-hidden="true">
+                  <HouseMateMascot />
+                </span>
+                <div className={styles.thinkingContent}>
+                  <div className={styles.thinkingHeading}>
+                    <strong>Looking that up…</strong>
+                    <span className={styles.thinkingDots} aria-hidden="true">
+                      <span />
+                      <span />
+                      <span />
+                    </span>
+                  </div>
+                  <p>{pendingQuestion}</p>
+                  <div className={styles.thinkingLines} aria-hidden="true">
+                    <span />
+                    <span />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
           <div className={styles.sendRow}>
             <span>
               {message.length > 800
                 ? `${message.length}/1000`
-                : 'Ctrl / ⌘ + Enter to send'}
+                : 'Enter to ask · Shift + Enter for a new line'}
             </span>
             {busy ? (
               <Button
@@ -370,33 +271,30 @@ export function AssistantWorkspace({
               <Button
                 type="submit"
                 className={styles.send}
-                disabled={
-                  (!actionsEnabled && (!enabled || !privacyAcknowledged)) ||
-                  !message.trim() ||
-                  !!activeDraft
-                }
+                disabled={!enabled || !message.trim()}
               >
                 <Send size={17} aria-hidden="true" />
                 Ask
               </Button>
             )}
           </div>
-          {enabled !== false && (message.trim() || privacyAcknowledged) && (
-            <label className={styles.consent}>
-              <input
-                type="checkbox"
-                checked={privacyAcknowledged}
-                disabled={!enabled || busy || !!activeDraft}
-                onChange={(event) =>
-                  setPrivacyAcknowledged(event.target.checked)
-                }
-              />
-              <span>
-                For general questions: my question has no personal or
-                confidential details. I understand Google may use or review it.
-              </span>
-            </label>
-          )}
+          <p id="assistant-sharing-notice" className={styles.sharingNotice}>
+            {enabled ? (
+              <>
+                By asking a general question, you acknowledge that Google Gemini
+                may use or review it. Keep personal or confidential details out.{' '}
+                <a
+                  href="https://ai.google.dev/gemini-api/terms"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Privacy details
+                </a>
+              </>
+            ) : (
+              'Quick questions stay in HouseMate.'
+            )}
+          </p>
         </form>
       </section>
 
@@ -411,7 +309,7 @@ export function AssistantWorkspace({
             variant="ghost"
             className={styles.shortcut}
             aria-label={`${title}: ${label}`}
-            disabled={busy || !!activeDraft}
+            disabled={busy}
             onClick={() => void ask({ topic }, label)}
           >
             {title}
@@ -420,15 +318,15 @@ export function AssistantWorkspace({
       </fieldset>
       <details className={styles.privacy}>
         <summary>
-          Draft commands stay in HouseMate · Privacy{' '}
+          How answers work · Privacy{' '}
           <ChevronDown size={13} aria-hidden="true" />
         </summary>
         <div id="assistant-privacy">
           <p>
-            Action commands are interpreted locally by HouseMate. General
-            questions go to Gemini only after your acknowledgement. Keep names,
-            amounts, contact details and confidential information out of general
-            questions. Google may use or review them under its{' '}
+            General questions may go to Gemini when you press Ask or Enter, as
+            explained below the chat box. Keep names, amounts, contact details
+            and confidential information out of general questions. Google may
+            use or review them under its{' '}
             <a
               href="https://ai.google.dev/gemini-api/terms"
               target="_blank"
@@ -440,28 +338,27 @@ export function AssistantWorkspace({
           </p>
           <p>
             Quick questions stay in HouseMate. Answers use your current
-            household records; each question is checked independently. Meal
-            checks, announcements, shopping, chores, expenses and bills use
-            editable drafts and explicit confirmation. Money shares come from
-            the API preview. Unfinished drafts are saved on this device for
-            seven days and can be resumed after reloading. Answers stay in this
-            tab. Signing out clears saved drafts. Nothing is submitted
-            automatically.
+            household records; each question is checked independently. The
+            Assistant answers questions without creating or changing records.
+            Use Board or Money to add records. Unsent questions are saved on
+            this device for seven days and can be resumed after reloading.
+            Answers stay in this tab. Signing out clears saved questions.
+            Nothing is submitted automatically.
           </p>
         </div>
       </details>
       {enabled === false && (
         <p className={styles.notice}>
-          Quick questions are ready.{' '}
-          {actionsEnabled && 'Editable action drafts are ready too. '}
-          Free-text questions will become available once AI setup is complete.
+          Quick questions are ready. Free-text questions will become available
+          once AI setup is complete.
         </p>
       )}
       <p className={styles.srOnly} role="status">
-        {status ||
-          (enabled === null && !error
-            ? 'Checking assistant availability…'
-            : '')}
+        {!busy &&
+          (status ||
+            (enabled === null && !error
+              ? 'Checking assistant availability…'
+              : ''))}
       </p>
       {error && (
         <p className={styles.error} role="alert">
@@ -469,87 +366,7 @@ export function AssistantWorkspace({
         </p>
       )}
 
-      {busy && (
-        <div className={styles.thinking}>
-          <span>Checking: {pendingQuestion}</span>
-        </div>
-      )}
-      {activeDraft && (
-        <AssistantDraftReview
-          key={activeDraft.id}
-          draft={activeDraft.value}
-          household={household}
-          token={token}
-          resumeSavedFields={resumeSavedFields}
-          onCancel={() => {
-            savedDraft.clear();
-            setDraft(null);
-            setStatus('Draft cancelled. Nothing was saved.');
-            questionInput.current?.focus();
-          }}
-          onPublished={(kind, recordId, title) => {
-            if (
-              scope.current.token !== token ||
-              scope.current.householdId !== household.id
-            )
-              return;
-            savedDraft.clear();
-            const money = kind === 'expense' || kind === 'bill';
-            const view = {
-              meal: 'meals',
-              announcement: 'announcements',
-              chore: 'chores',
-              shopping: 'shopping',
-              expense: 'expenses',
-              bill: 'bills',
-            }[kind];
-            const parameter = money
-              ? 'record'
-              : kind === 'shopping'
-                ? 'item'
-                : kind;
-            const href = `${money ? '/money' : '/house'}?view=${view}&household=${encodeURIComponent(household.id)}&${parameter}=${encodeURIComponent(recordId)}`;
-            const answer: AssistantAnswer = {
-              kind: 'answer',
-              topic: kind === 'meal' ? 'meals' : 'unsupported',
-              text: `${{ meal: 'Meal check', announcement: 'Announcement', chore: 'Chore', shopping: 'Shopping item', expense: 'Expense', bill: 'Bill' }[kind]} ${kind === 'meal' || kind === 'announcement' ? 'published' : 'saved'}: ${title}`,
-              timezone: household.timezone,
-              generatedAt: new Date().toISOString(),
-              rows: [],
-              sources: [{ label: 'Open published record', href }],
-              partial: false,
-            };
-            const publishedTurnId = ++nextId.current;
-            setTurns((previous) =>
-              [
-                ...previous,
-                {
-                  id: publishedTurnId,
-                  question: 'Your confirmed draft',
-                  answer,
-                },
-              ].slice(-6),
-            );
-            setDraft(null);
-            setStatus('Saved successfully.');
-            questionInput.current?.focus();
-          }}
-          onAccessLost={(notice) => {
-            if (
-              scope.current.token !== token ||
-              scope.current.householdId !== household.id
-            )
-              return;
-            savedDraft.clear();
-            setDraft(null);
-            setTurns([]);
-            setEnabled(false);
-            setActionsEnabled(false);
-            setError(notice);
-          }}
-        />
-      )}
-      {!busy && !activeDraft && latest && (
+      {!busy && latest && (
         <section className={styles.result} aria-label="Latest answer">
           <div className={styles.resultHeading}>
             <p className={styles.question}>{latest.question}</p>
@@ -607,10 +424,21 @@ function AnswerCard({
   const visibleRows = expanded ? answer.rows : answer.rows.slice(0, 3);
   return (
     <article className={styles.answer} aria-label={`Answer to ${question}`}>
-      {answer.kind === 'clarification' && (
-        <h2 className={styles.clarification}>Let’s clarify</h2>
-      )}
-      <p className={styles.answerText}>{answer.text}</p>
+      <h2 className={styles.answerTitle}>
+        {answer.kind === 'clarification'
+          ? 'Let’s clarify'
+          : {
+              summary: 'Your household at a glance',
+              balance: 'Your balance',
+              bills: 'Bills to watch',
+              events: 'Upcoming events',
+              meals: 'Meal plans',
+              chores: 'Chores',
+              shopping: 'Shopping',
+              unsupported: 'Here’s what I found',
+            }[answer.topic]}
+      </h2>
+      <AnswerText text={answer.text} />
       {answer.rows.length > 0 && (
         <ul id={`assistant-records-${id}`} className={styles.records}>
           {visibleRows.map((row) => (
@@ -654,15 +482,6 @@ function AnswerCard({
           </Link>
         ))}
       </nav>
-      {answer.topic === 'meals' && (
-        <Link
-          className={styles.nextAction}
-          href={`/house?view=meals&household=${encodeURIComponent(householdId)}&add=1`}
-        >
-          Plan a meal
-          <ArrowUpRight size={15} aria-hidden="true" />
-        </Link>
-      )}
       {(answer.topic === 'balance' || answer.topic === 'bills') && (
         <Link
           className={styles.nextAction}
@@ -684,5 +503,16 @@ function AnswerCard({
         · {answer.timezone}. Ask again to refresh.
       </p>
     </article>
+  );
+}
+
+function AnswerText({ text }: { text: string }) {
+  // Preserve the API wording and amounts; only separate the leading sentence.
+  const parts = text.match(/^([\s\S]*?[.!?])\s+([\s\S]+)$/);
+  return (
+    <div className={styles.answerText}>
+      <p className={styles.answerLead}>{parts?.[1] ?? text}</p>
+      {parts && <p className={styles.answerContext}>{parts[2]}</p>}
+    </div>
   );
 }

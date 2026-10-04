@@ -37,7 +37,7 @@ test('product previews support keyboard interaction and native FAQ controls expa
   const user = userEvent.setup();
   render(<LandingPage />);
   await user.click(screen.getByRole('link', { name: 'Tour' }));
-  const house = screen.getByRole('button', { name: 'House' });
+  const house = screen.getByRole('button', { name: 'Board' });
   house.focus();
   await user.keyboard('{Enter}');
   expect(house.getAttribute('aria-pressed')).toBe('true');
@@ -52,7 +52,7 @@ test('product previews support keyboard interaction and native FAQ controls expa
   expect(faq.closest('details')?.open).toBe(true);
   await user.click(screen.getByRole('link', { name: 'Tour' }));
   expect(
-    screen.getByRole('button', { name: 'House' }).getAttribute('aria-pressed'),
+    screen.getByRole('button', { name: 'Board' }).getAttribute('aria-pressed'),
   ).toBe('true');
 });
 
@@ -143,9 +143,9 @@ test('keyboard focus and changes to reduced motion reveal content immediately', 
   const tour = container.querySelector<HTMLElement>('#tour');
   if (!tour) throw new Error('Tour section missing');
   expect(tour.dataset.reveal).toBe('pending');
-  act(() => screen.getByRole('button', { name: 'House' }).focus());
+  act(() => screen.getByRole('button', { name: 'Board' }).focus());
   expect(tour.dataset.reveal).toBe('visible');
-  expect(screen.getByRole('button', { name: 'House' })).toBe(
+  expect(screen.getByRole('button', { name: 'Board' })).toBe(
     document.activeElement,
   );
   env.reduceMotion();

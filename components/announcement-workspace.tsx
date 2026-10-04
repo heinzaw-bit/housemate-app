@@ -26,8 +26,8 @@ import {
 import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
 const scopes = [
-  { value: 'all', label: 'All announcements' },
-  { value: 'needs_ack', label: 'Needs your acknowledgement' },
+  { value: 'all', label: 'All' },
+  { value: 'needs_ack', label: 'Needs acknowledgement' },
   { value: 'expired', label: 'Expired' },
 ];
 
@@ -38,13 +38,15 @@ export function AnnouncementWorkspace({
   focusSignal = 0,
   createRequest = 0,
   onHouseChanged,
+  compact = false,
 }: {
   household: Household;
   token: string;
   focusedId?: string;
   focusSignal?: number;
   createRequest?: number;
-  onHouseChanged: () => void;
+  onHouseChanged?: () => void;
+  compact?: boolean;
 }) {
   const [scope, setScope] = useState<AnnouncementScope>('all');
   const browser = useHouseRecords<Announcement, AnnouncementScope>({
@@ -154,7 +156,7 @@ export function AnnouncementWorkspace({
       setRecipientIds(null);
       publicationKey.reset();
       setNotice('Announcement published to the selected recipients.');
-      onHouseChanged();
+      onHouseChanged?.();
       void browser.refresh(true);
     } catch (failure) {
       savedDraft.reject(failure);
@@ -179,7 +181,7 @@ export function AnnouncementWorkspace({
       );
       browser.accept(updated);
       setNotice('Your acknowledgement was recorded.');
-      onHouseChanged();
+      onHouseChanged?.();
       void browser.refresh(true);
     } catch (failure) {
       setActionError(
@@ -196,6 +198,7 @@ export function AnnouncementWorkspace({
   return (
     <CommunicationBrowser
       title="Announcements"
+      compact={compact}
       subtitle="Share updates with the people who need them."
       createOpen={formOpen}
       draftNotice={
@@ -391,7 +394,21 @@ export function AnnouncementWorkspace({
         browser.close();
         setActionError('');
       }}
-      records={browser.records}
+      records={
+        compact
+          ? [...browser.records].sort((a, b) => {
+              const rank = (record: Announcement) =>
+                record.expired
+                  ? 0
+                  : { normal: 0, important: 1, urgent: 2 }[record.priority];
+              return (
+                rank(b) - rank(a) ||
+                Date.parse(b.publishedAt) - Date.parse(a.publishedAt) ||
+                a.id.localeCompare(b.id)
+              );
+            })
+          : browser.records
+      }
       selected={browser.selected}
       loading={browser.loading}
       detailLoading={browser.detailLoading}
@@ -409,21 +426,25 @@ export function AnnouncementWorkspace({
       onMore={() => void browser.loadMore()}
       renderRow={(record) => (
         <>
-          <span
-            className={`mb-1 block text-xs font-semibold uppercase ${record.priority === 'urgent' ? 'text-destructive' : record.priority === 'important' ? 'text-primary' : 'text-muted-foreground'}`}
-          >
-            {record.priority}
-            {record.expired ? ' · Expired' : ''}
+          {(record.priority !== 'normal' || record.expired) && (
+            <span
+              className={`mb-1 block text-xs font-semibold uppercase ${record.priority === 'urgent' ? 'text-destructive' : record.priority === 'important' ? 'text-primary' : 'text-muted-foreground'}`}
+            >
+              {record.priority}
+              {record.expired ? ' · Expired' : ''}
+            </span>
+          )}
+          <strong className="block break-words">{record.title}</strong>
+          <span className="my-1 line-clamp-2 break-words text-sm text-muted-foreground">
+            {record.body}
           </span>
-          <strong className="block">{record.title}</strong>
           <span className="block text-sm text-muted-foreground">
             {record.authorDisplayName} ·{' '}
             {householdTime(record.publishedAt, household.timezone)}
           </span>
-          {record.requiresAcknowledgement && (
-            <span className="mt-1 block text-xs text-muted-foreground">
-              {record.counts.acknowledged} acknowledged ·{' '}
-              {record.counts.awaiting} awaiting
+          {record.canAcknowledge && (
+            <span className="mt-2 inline-block rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
+              Acknowledgement needed
             </span>
           )}
         </>

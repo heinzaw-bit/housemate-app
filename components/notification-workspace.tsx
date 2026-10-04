@@ -270,6 +270,7 @@ function NotificationSettings({
 }) {
   const [preferences, setPreferences] =
     useState<NotificationPreferences | null>(null);
+  const [showEarlierUpdates, setShowEarlierUpdates] = useState(false);
   const [config, setConfig] = useState<PushConfig | null>(null);
   const [devices, setDevices] = useState<PushDevice[]>([]);
   const [localId, setLocalId] = useState('');
@@ -638,30 +639,49 @@ function NotificationSettings({
                 <span>Inbox</span>
                 <span>Push</span>
               </div>
-              {notificationCategories.map((category) => (
-                <div key={category} className="notification-category-row">
-                  <span>{category === 'money' ? 'Expenses' : category}</span>
-                  {(['inApp', 'webPush'] as const).map((channel) => (
-                    <NotificationSwitch
-                      key={channel}
-                      label={`${category === 'money' ? 'Expenses' : category} ${channel === 'inApp' ? 'inbox' : 'push'} notifications`}
-                      checked={preferences.categories[category][channel]}
-                      onChange={(checked) =>
-                        setPreferences({
-                          ...preferences,
-                          categories: {
-                            ...preferences.categories,
-                            [category]: {
-                              ...preferences.categories[category],
-                              [channel]: checked,
+              {notificationCategories
+                .filter(
+                  (category) =>
+                    showEarlierUpdates ||
+                    !['meals', 'chores', 'shopping', 'polls'].includes(
+                      category,
+                    ),
+                )
+                .map((category) => (
+                  <div key={category} className="notification-category-row">
+                    <span>{category === 'money' ? 'Expenses' : category}</span>
+                    {(['inApp', 'webPush'] as const).map((channel) => (
+                      <NotificationSwitch
+                        key={channel}
+                        label={`${category === 'money' ? 'Expenses' : category} ${channel === 'inApp' ? 'inbox' : 'push'} notifications`}
+                        checked={preferences.categories[category][channel]}
+                        onChange={(checked) =>
+                          setPreferences({
+                            ...preferences,
+                            categories: {
+                              ...preferences.categories,
+                              [category]: {
+                                ...preferences.categories[category],
+                                [channel]: checked,
+                              },
                             },
-                          },
-                        })
-                      }
-                    />
-                  ))}
-                </div>
-              ))}
+                          })
+                        }
+                      />
+                    ))}
+                  </div>
+                ))}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-expanded={showEarlierUpdates}
+                onClick={() => setShowEarlierUpdates((old) => !old)}
+              >
+                {showEarlierUpdates
+                  ? 'Hide earlier household tools'
+                  : 'Earlier household tools'}
+              </Button>
               <p className="notification-help">
                 Inbox keeps updates here. Push sends them to enabled devices.
                 Existing inbox history stays available.

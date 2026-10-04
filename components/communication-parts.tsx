@@ -141,6 +141,7 @@ export function CommunicationRecipients({
 export function CommunicationBrowser<T extends { id: string }>({
   title,
   subtitle,
+  compact = false,
   createOpen,
   draftNotice,
   onToggleCreate,
@@ -166,6 +167,7 @@ export function CommunicationBrowser<T extends { id: string }>({
 }: {
   title: string;
   subtitle: string;
+  compact?: boolean;
   createOpen: boolean;
   draftNotice?: React.ReactNode;
   onToggleCreate: () => void;
@@ -204,18 +206,22 @@ export function CommunicationBrowser<T extends { id: string }>({
   return (
     <section className="content-inner space-y-4" aria-label={title}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="font-heading text-xl">{title}</h2>
-          <p className="text-sm text-muted-foreground">{subtitle}</p>
-        </div>
-        <div className="flex gap-2">
+        {!compact && (
+          <div>
+            <h2 className="font-heading text-xl">{title}</h2>
+            <p className="text-sm text-muted-foreground">{subtitle}</p>
+          </div>
+        )}
+        <div className={`flex gap-2 ${compact ? 'ml-auto' : ''}`}>
           <Button
             variant="outline"
             size="sm"
             disabled={loading}
             onClick={onRefresh}
+            aria-label={`Refresh ${title.toLowerCase()}`}
+            title={`Refresh ${title.toLowerCase()}`}
           >
-            <RefreshCw size={15} aria-hidden="true" /> Refresh
+            <RefreshCw size={15} aria-hidden="true" /> {!compact && 'Refresh'}
           </Button>
           <Button size="sm" onClick={onToggleCreate}>
             {createOpen
@@ -264,7 +270,7 @@ export function CommunicationBrowser<T extends { id: string }>({
             hour: '2-digit',
             minute: '2-digit',
           })}{' '}
-          · Refreshes while this section is open.
+          {!compact && ' · Refreshes while this section is open.'}
         </p>
       )}
       {loading && (
@@ -277,13 +283,17 @@ export function CommunicationBrowser<T extends { id: string }>({
           Opening details…
         </p>
       )}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,1fr)]">
+      <div
+        className={`grid gap-4 ${selected || !compact ? 'lg:grid-cols-[minmax(0,1fr)_minmax(300px,1fr)]' : ''}`}
+      >
         <Card className={selected ? 'max-lg:hidden' : undefined}>
-          <CardHeader>
-            <CardTitle>
-              {scopes.find((item) => item.value === scope)?.label ?? title}
-            </CardTitle>
-          </CardHeader>
+          {!compact && (
+            <CardHeader>
+              <CardTitle>
+                {scopes.find((item) => item.value === scope)?.label ?? title}
+              </CardTitle>
+            </CardHeader>
+          )}
           <CardContent className="space-y-2">
             {!loading && !records.length && !error && (
               <p className="py-6 text-center text-sm text-muted-foreground">
@@ -308,32 +318,34 @@ export function CommunicationBrowser<T extends { id: string }>({
             )}
           </CardContent>
         </Card>
-        <Card
-          ref={detailRef}
-          tabIndex={-1}
-          className={`scroll-mt-6 ${selected ? '' : 'max-lg:hidden'}`}
-        >
-          <CardContent className="space-y-4">
-            {selected ? (
-              <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="lg:hidden"
-                  onClick={onClose}
-                >
-                  Back to {title.toLowerCase()}
-                </Button>
-                {renderDetail(selected)}
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Choose {title === 'Polls' ? 'a poll' : 'an announcement'} to see
-                details and respond.
-              </p>
-            )}
-          </CardContent>
-        </Card>
+        {(selected || !compact) && (
+          <Card
+            ref={detailRef}
+            tabIndex={-1}
+            className={`scroll-mt-6 ${selected ? '' : 'max-lg:hidden'}`}
+          >
+            <CardContent className="space-y-4">
+              {selected ? (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="lg:hidden"
+                    onClick={onClose}
+                  >
+                    Back to {title.toLowerCase()}
+                  </Button>
+                  {renderDetail(selected)}
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Choose {title === 'Polls' ? 'a poll' : 'an announcement'} to
+                  see details and respond.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </section>
   );

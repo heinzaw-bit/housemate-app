@@ -1,13 +1,6 @@
 'use client';
 
-import {
-  ArrowUpRight,
-  ClipboardList,
-  ReceiptText,
-  RefreshCw,
-  ShoppingBasket,
-  UtensilsCrossed,
-} from 'lucide-react';
+import { ArrowUpRight, ReceiptText, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -170,11 +163,10 @@ export function HomeDashboard({
                 Needs attention
               </h2>
               <p className="text-sm text-muted-foreground">
-                Upcoming items across {household.name}. Check who is responsible
-                in each detail.
+                Upcoming bills across {household.name}.
               </p>
             </div>
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div className="grid gap-4">
               <Card className="gap-3 border-amber-300/60 bg-amber-50/40 dark:bg-amber-950/20">
                 <CardHeader className="space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -252,74 +244,6 @@ export function HomeDashboard({
                   </Link>
                 </CardFooter>
               </Card>
-              <Card className="gap-3 bg-primary/5">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <ClipboardList size={19} aria-hidden="true" /> Next chore
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 space-y-3 text-sm">
-                  {data.chores.nextDue ? (
-                    <>
-                      <p className="font-medium">{data.chores.nextDue.title}</p>
-                      <p className="text-muted-foreground">
-                        {data.chores.nextDue.assigneeDisplayName} · Due{' '}
-                        {time(data.chores.nextDue.dueAt)}
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-muted-foreground">No open chores.</p>
-                  )}
-                  {data.chores.overdueCount > 0 && (
-                    <Badge variant="destructive">
-                      {data.chores.overdueCount} overdue
-                    </Badge>
-                  )}
-                </CardContent>
-                <CardFooter>
-                  <Link
-                    className="inline-link"
-                    href={`/house?household=${encodeURIComponent(household.id)}&chores=1`}
-                  >
-                    Open chores <ArrowUpRight size={16} aria-hidden="true" />
-                  </Link>
-                </CardFooter>
-              </Card>
-              <Card className="gap-3">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <UtensilsCrossed size={19} aria-hidden="true" /> Next meal
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 space-y-3 text-sm">
-                  {data.nextMeal ? (
-                    <>
-                      <p className="font-medium">{data.nextMeal.question}</p>
-                      <p className="text-muted-foreground">
-                        {time(data.nextMeal.startsAt)} ·{' '}
-                        {data.nextMeal.awaitingCount} awaiting responses
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-muted-foreground">
-                      No upcoming meal check.
-                    </p>
-                  )}
-                </CardContent>
-                <CardFooter>
-                  <Link
-                    className="inline-link"
-                    href={
-                      data.nextMeal
-                        ? `/house?household=${encodeURIComponent(household.id)}&meal=${encodeURIComponent(data.nextMeal.id)}`
-                        : `/house?household=${encodeURIComponent(household.id)}`
-                    }
-                  >
-                    {data.nextMeal ? 'Open meal check' : 'Plan a meal'}{' '}
-                    <ArrowUpRight size={16} aria-hidden="true" />
-                  </Link>
-                </CardFooter>
-              </Card>
             </div>
           </section>
 
@@ -327,7 +251,7 @@ export function HomeDashboard({
             <h2 id="snapshot-heading" className="font-heading text-xl">
               At a glance
             </h2>
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2">
               <Card className="gap-3 bg-primary/5">
                 <CardHeader>
                   <CardTitle>Your balance</CardTitle>
@@ -381,40 +305,6 @@ export function HomeDashboard({
                   >
                     Review bills <ArrowUpRight size={16} aria-hidden="true" />
                   </Link>
-                </CardContent>
-              </Card>
-              <Card className="gap-3">
-                <CardHeader>
-                  <CardTitle>Household work</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                  <p className="flex items-center justify-between gap-3">
-                    <span className="flex items-center gap-2">
-                      <ShoppingBasket size={17} aria-hidden="true" /> Shopping
-                    </span>
-                    <strong>{data.shoppingOpenCount} to buy</strong>
-                  </p>
-                  <p className="flex items-center justify-between gap-3">
-                    <span className="flex items-center gap-2">
-                      <ClipboardList size={17} aria-hidden="true" /> Chores
-                    </span>
-                    <strong>{data.chores.openCount} open</strong>
-                  </p>
-                  <div className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
-                    <Link
-                      className="inline-link"
-                      href={`/house?household=${encodeURIComponent(household.id)}&shopping=1`}
-                    >
-                      Shopping list{' '}
-                      <ArrowUpRight size={16} aria-hidden="true" />
-                    </Link>
-                    <Link
-                      className="inline-link"
-                      href={`/house?household=${encodeURIComponent(household.id)}&chores=1`}
-                    >
-                      Chores <ArrowUpRight size={16} aria-hidden="true" />
-                    </Link>
-                  </div>
                 </CardContent>
               </Card>
             </div>
