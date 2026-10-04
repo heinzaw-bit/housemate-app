@@ -7,8 +7,10 @@ import { Button } from '@/components/ui/button';
 import {
   ApiRequestError,
   type AssistantAnswer,
+  type AssistantContextTopic,
   type AssistantTopic,
   askAssistant,
+  assistantContextTopics,
   getAssistantConfig,
   type Household,
 } from '@/lib/api';
@@ -16,12 +18,11 @@ import { moneyCreateHref } from '@/lib/dashboard';
 import { useLeaveGuard } from '@/lib/pending-work';
 import styles from './assistant-workspace.module.css';
 import { HouseMateMascot } from './housemate-mascot';
-import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
 const questions: { topic: AssistantTopic; label: string; title: string }[] = [
   { topic: 'summary', label: 'What needs attention?', title: 'Catch me up' },
-  { topic: 'bills', label: 'Which bills are due?', title: 'Bills to watch' },
   { topic: 'balance', label: 'How much do I owe?', title: 'My balance' },
+  { topic: 'board', label: 'What’s new on the Board?', title: 'Board updates' },
 ];
 interface Turn {
   id: number;
@@ -51,15 +52,7 @@ export function AssistantWorkspace({
   const nextId = useRef(0);
   useLeaveGuard(!!message.trim() || busy);
 
-  const savedDraft = useSavedDraft({
-    kind: 'assistant',
-    enabled: !!message.trim(),
-    value: { message, action: 'null' },
-    validate: (snapshot) => snapshot.action === 'null',
-    restore: (snapshot) => setMessage(snapshot.message),
-  });
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: timezone changes invalidate saved questions and pending answers.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: timezone changes invalidate pending answers.
   useEffect(() => {
     const controller = new AbortController();
     setEnabled(null);
@@ -72,7 +65,9 @@ export function AssistantWorkspace({
     getAssistantConfig(token, household.id, controller.signal)
       .then((config) => {
         if (!controller.signal.aborted) {
-          setEnabled(config.naturalLanguageEnabled);
+          setEnabled(
+            config.naturalLanguageEnabled || config.chatEnabled === true,
+          );
         }
       })
       .catch(() => {
@@ -90,14 +85,29 @@ export function AssistantWorkspace({
 
   const hadWork = useRef(false);
   useEffect(() => {
-    if (hadWork.current && !busy && enabled) questionInput.current?.focus();
+    if (hadWork.current && !busy && enabled) {
+      questionInput.current?.focus();
+      if (latest?.answer.kind === 'clarification')
+        questionInput.current?.select();
+    }
     hadWork.current = busy;
-  }, [busy, enabled]);
+  }, [busy, enabled, latest]);
 
   function submitQuestion() {
     if (enabled && message.trim() && !current.current)
       void ask(
-        { message: message.trim(), privacyAcknowledged: true },
+        {
+          message: message.trim(),
+          privacyAcknowledged: true,
+          ...(latest &&
+          assistantContextTopics.some((topic) => topic === latest.answer.topic)
+            ? {
+                context: {
+                  topic: latest.answer.topic as AssistantContextTopic,
+                },
+              }
+            : {}),
+        },
         message.trim(),
       );
   }
@@ -105,22 +115,21 @@ export function AssistantWorkspace({
   async function ask(
     question:
       | { topic: AssistantTopic; message?: never }
-      | { message: string; topic?: never; privacyAcknowledged: true },
+      | {
+          message: string;
+          topic?: never;
+          privacyAcknowledged: true;
+          context?: { topic: AssistantContextTopic };
+        },
     label: string,
   ) {
     if (current.current) return;
-    if (question.message && savedDraft.pending) {
-      setError(
-        'Resume or discard your saved question before starting another question.',
-      );
-      return;
-    }
     const controller = new AbortController();
     current.current = controller;
     setBusy(true);
     setPendingQuestion(label);
     setError('');
-    setStatus('Checking household records…');
+    setStatus('Looking that up…');
     try {
       const answer = await askAssistant(
         token,
@@ -134,7 +143,6 @@ export function AssistantWorkspace({
         [...previous, { id, question: label, answer }].slice(-6),
       );
       if (question.message && answer.kind === 'answer') {
-        savedDraft.clear();
         setMessage('');
       }
       setStatus(
@@ -148,14 +156,23 @@ export function AssistantWorkspace({
         failure instanceof ApiRequestError &&
         ['UNAUTHENTICATED', 'NOT_FOUND', 'FORBIDDEN'].includes(failure.code)
       ) {
-        savedDraft.clear();
         setTurns([]);
         setEnabled(false);
       }
+      const aiUnavailable =
+        failure instanceof ApiRequestError &&
+        [
+          'AI_LIMIT_REACHED',
+          'AI_PROVIDER_LIMIT_REACHED',
+          'ASSISTANT_SETUP_REQUIRED',
+          'ASSISTANT_UNAVAILABLE',
+        ].includes(failure.code);
       setError(
-        failure instanceof Error
-          ? failure.message
-          : 'The answer could not be loaded. Try a quick question or open the relevant page.',
+        aiUnavailable
+          ? 'I can’t answer that question right now. Try the household shortcuts, or open Board and Money to check your records.'
+          : failure instanceof Error
+            ? failure.message
+            : 'That answer could not be loaded. Try a household shortcut or open Board and Money.',
       );
       setStatus('');
     } finally {
@@ -175,12 +192,11 @@ export function AssistantWorkspace({
 
   return (
     <div className={`content-inner ${styles.workspace}`}>
-      <SavedDraftNotice draft={savedDraft} disabled={busy} />
       <header className={styles.header}>
         <HouseHelper />
         <div>
-          <h1>What can I help with?</h1>
-          <p>{household.name} · Household questions &amp; money</p>
+          <h1>Ask HouseMate</h1>
+          <p>{household.name} · Your household helper</p>
         </div>
       </header>
 
@@ -215,8 +231,7 @@ export function AssistantWorkspace({
                   submitQuestion();
                 }
               }}
-              placeholder="Ask about your household, bills, balance or upcoming events…"
-              aria-describedby="assistant-sharing-notice"
+              placeholder="Ask about Board updates, your balance, or an everyday question…"
             />
             {busy && (
               <div
@@ -278,23 +293,6 @@ export function AssistantWorkspace({
               </Button>
             )}
           </div>
-          <p id="assistant-sharing-notice" className={styles.sharingNotice}>
-            {enabled ? (
-              <>
-                By asking a general question, you acknowledge that Google Gemini
-                may use or review it. Keep personal or confidential details out.{' '}
-                <a
-                  href="https://ai.google.dev/gemini-api/terms"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Privacy details
-                </a>
-              </>
-            ) : (
-              'Quick questions stay in HouseMate.'
-            )}
-          </p>
         </form>
       </section>
 
@@ -316,37 +314,6 @@ export function AssistantWorkspace({
           </Button>
         ))}
       </fieldset>
-      <details className={styles.privacy}>
-        <summary>
-          How answers work · Privacy{' '}
-          <ChevronDown size={13} aria-hidden="true" />
-        </summary>
-        <div id="assistant-privacy">
-          <p>
-            General questions may go to Gemini when you press Ask or Enter, as
-            explained below the chat box. Keep names, amounts, contact details
-            and confidential information out of general questions. Google may
-            use or review them under its{' '}
-            <a
-              href="https://ai.google.dev/gemini-api/terms"
-              target="_blank"
-              rel="noreferrer"
-            >
-              free service terms
-            </a>
-            .
-          </p>
-          <p>
-            Quick questions stay in HouseMate. Answers use your current
-            household records; each question is checked independently. The
-            Assistant answers questions without creating or changing records.
-            Use Board or Money to add records. Unsent questions are saved on
-            this device for seven days and can be resumed after reloading.
-            Answers stay in this tab. Signing out clears saved questions.
-            Nothing is submitted automatically.
-          </p>
-        </div>
-      </details>
       {enabled === false && (
         <p className={styles.notice}>
           Quick questions are ready. Free-text questions will become available
@@ -361,9 +328,17 @@ export function AssistantWorkspace({
               : ''))}
       </p>
       {error && (
-        <p className={styles.error} role="alert">
-          {error}
-        </p>
+        <div className={styles.error} role="alert">
+          <p>{error}</p>
+          <div className={styles.recoveryLinks}>
+            <Link href={`/house?household=${encodeURIComponent(household.id)}`}>
+              Open Board
+            </Link>
+            <Link href={`/money?household=${encodeURIComponent(household.id)}`}>
+              Open Money
+            </Link>
+          </div>
+        </div>
       )}
 
       {!busy && latest && (
@@ -382,6 +357,10 @@ export function AssistantWorkspace({
             key={latest.id}
             turn={latest}
             householdId={household.id}
+            busy={busy}
+            onChoose={(choice) =>
+              void ask({ topic: choice.topic }, choice.label)
+            }
           />
         </section>
       )}
@@ -416,9 +395,13 @@ function HouseHelper() {
 function AnswerCard({
   turn: { id, question, answer },
   householdId,
+  busy = false,
+  onChoose,
 }: {
   turn: Turn;
   householdId: string;
+  busy?: boolean;
+  onChoose?: (choice: { label: string; topic: AssistantContextTopic }) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const visibleRows = expanded ? answer.rows : answer.rows.slice(0, 3);
@@ -428,17 +411,50 @@ function AnswerCard({
         {answer.kind === 'clarification'
           ? 'Let’s clarify'
           : {
-              summary: 'Your household at a glance',
+              summary: 'Catch me up',
+              board: 'Board updates',
               balance: 'Your balance',
               bills: 'Bills to watch',
               events: 'Upcoming events',
               meals: 'Meal plans',
               chores: 'Chores',
               shopping: 'Shopping',
+              announcements: 'Household announcements',
+              greeting: 'Hello!',
+              about: 'Meet HouseMate',
+              general: 'Everyday advice',
               unsupported: 'Here’s what I found',
             }[answer.topic]}
       </h2>
-      <AnswerText text={answer.text} />
+      {answer.topic === 'general' ? (
+        <GeneralAnswer text={answer.text} />
+      ) : (
+        <AnswerText text={answer.text} />
+      )}
+      {answer.topic === 'general' && (
+        <p className={styles.answerMeta}>
+          General AI answer · Check important details.
+        </p>
+      )}
+      {answer.kind === 'clarification' &&
+        onChoose &&
+        !!answer.choices?.length && (
+          <fieldset
+            className={styles.choices}
+            aria-label="Choose what to check"
+          >
+            {answer.choices.map((choice) => (
+              <Button
+                key={choice.topic}
+                variant="outline"
+                disabled={busy}
+                onClick={() => onChoose(choice)}
+              >
+                {choice.label}
+              </Button>
+            ))}
+          </fieldset>
+        )}
       {answer.rows.length > 0 && (
         <ul id={`assistant-records-${id}`} className={styles.records}>
           {visibleRows.map((row) => (
@@ -448,7 +464,10 @@ function AnswerCard({
                   <strong>{row.label}</strong>
                   <span className={styles.detail}>{row.detail}</span>
                 </span>
-                <ArrowUpRight size={17} aria-hidden="true" />
+                <span className={styles.recordAction}>
+                  {recordAction(row.href)}
+                  <ArrowUpRight size={14} aria-hidden="true" />
+                </span>
               </Link>
             </li>
           ))}
@@ -474,14 +493,16 @@ function AnswerCard({
           the full list.
         </p>
       )}
-      <nav className={styles.sources} aria-label={`Sources for ${question}`}>
-        {answer.sources.map((source) => (
-          <Link key={source.href} href={source.href}>
-            {source.label}
-            <ArrowUpRight size={14} aria-hidden="true" />
-          </Link>
-        ))}
-      </nav>
+      {answer.sources.length > 0 && (
+        <nav className={styles.sources} aria-label={`Sources for ${question}`}>
+          {answer.sources.map((source) => (
+            <Link key={source.href} href={source.href}>
+              {sourceAction(source)}
+              <ArrowUpRight size={14} aria-hidden="true" />
+            </Link>
+          ))}
+        </nav>
+      )}
       {(answer.topic === 'balance' || answer.topic === 'bills') && (
         <Link
           className={styles.nextAction}
@@ -492,7 +513,9 @@ function AnswerCard({
         </Link>
       )}
       <p className={styles.timestamp}>
-        Checked{' '}
+        {assistantContextTopics.some((topic) => topic === answer.topic)
+          ? 'Checked'
+          : 'Answered'}{' '}
         <time dateTime={answer.generatedAt}>
           {new Intl.DateTimeFormat('en', {
             dateStyle: 'medium',
@@ -500,7 +523,10 @@ function AnswerCard({
             timeZone: answer.timezone,
           }).format(new Date(answer.generatedAt))}
         </time>{' '}
-        · {answer.timezone}. Ask again to refresh.
+        · {answer.timezone}.
+        {assistantContextTopics.some((topic) => topic === answer.topic)
+          ? ' Ask again to refresh.'
+          : ''}
       </p>
     </article>
   );
@@ -513,6 +539,50 @@ function AnswerText({ text }: { text: string }) {
     <div className={styles.answerText}>
       <p className={styles.answerLead}>{parts?.[1] ?? text}</p>
       {parts && <p className={styles.answerContext}>{parts[2]}</p>}
+    </div>
+  );
+}
+
+function recordAction(href: string): string {
+  if (href.includes('view=announcements')) return 'Open announcement';
+  if (href.includes('view=events')) return 'Open event';
+  if (href.includes('view=bills')) return 'View bill';
+  if (href.includes('view=balances')) return 'View balance';
+  return 'Open record';
+}
+function sourceAction(source: { label: string; href: string }): string {
+  if (source.href.includes('view=announcements')) return 'View announcements';
+  if (source.href.includes('view=events')) return 'View events';
+  if (source.href.includes('view=bills')) return 'View bills';
+  if (source.href.includes('view=balances')) return 'View balance';
+  if (source.label === 'Board') return 'Open Board';
+  return source.label;
+}
+function GeneralAnswer({ text }: { text: string }) {
+  // Plain text only: model output never becomes HTML, links or executable markup.
+  const blocks = [...text.matchAll(/\S[\s\S]*?(?=\n\s*\n|$)/g)];
+  return (
+    <div className={styles.answerText}>
+      {blocks.map((block) => {
+        const lines = [...block[0].matchAll(/[^\n]+/g)];
+        if (
+          lines.length > 0 &&
+          lines.every((line) => /^[-*•]\s+/.test(line[0]))
+        ) {
+          return (
+            <ul key={block.index} className={styles.generalList}>
+              {lines.map((line) => (
+                <li key={line.index}>{line[0].replace(/^[-*•]\s+/, '')}</li>
+              ))}
+            </ul>
+          );
+        }
+        return (
+          <p key={block.index} className={styles.generalParagraph}>
+            {block[0]}
+          </p>
+        );
+      })}
     </div>
   );
 }

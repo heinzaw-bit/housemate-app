@@ -94,17 +94,6 @@
   min-height: 44px;
   padding: 10px 18px;
 }
-.sharingNotice {
-  margin: 12px 0 0;
-  font-size: 11px;
-  line-height: 1.7;
-  color: var(--muted-foreground);
-}
-.sharingNotice a {
-  color: var(--primary);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
 .shortcuts {
   padding: 0;
   border: 0;
@@ -126,11 +115,6 @@
 .shortcut:hover:not(:disabled) {
   background: var(--accent);
 }
-.privacy {
-  color: var(--muted-foreground);
-  font-size: 11px;
-}
-.privacy summary,
 .history summary {
   display: flex;
   align-items: center;
@@ -141,23 +125,11 @@
   cursor: pointer;
   list-style: none;
 }
-.privacy summary::-webkit-details-marker,
 .history summary::-webkit-details-marker {
   display: none;
 }
-.privacy[open] summary > svg,
 .history[open] > summary > svg {
   transform: rotate(180deg);
-}
-.privacy p {
-  margin: 0 0 10px;
-  font-size: 12px;
-  line-height: 1.7;
-}
-.privacy a {
-  color: var(--primary);
-  text-decoration: underline;
-  text-underline-offset: 3px;
 }
 .result {
   margin-top: 22px;
@@ -433,8 +405,6 @@
   line-height: 1.6;
 }
 .input:focus-visible,
-.sharingNotice a:focus-visible,
-.privacy summary:focus-visible,
 .history summary:focus-visible,
 .sources a:focus-visible,
 .nextAction:focus-visible,
@@ -490,5 +460,69 @@
   .clear {
     padding-left: 8px;
     padding-right: 8px;
+  }
+}
+
+.answerMeta {
+  margin: 8px 0 12px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.generalParagraph {
+  margin: 0 0 12px;
+}
+.generalParagraph:last-child {
+  margin-bottom: 0;
+}
+.generalList {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+.generalList li + li {
+  margin-top: 5px;
+}
+.recordAction {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  color: var(--primary);
+  font-size: 11px;
+  max-width: 110px;
+}
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  margin: 12px 0;
+}
+.choices button {
+  min-height: 44px;
+}
+.error p {
+  margin: 0;
+}
+.recoveryLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 4px;
+}
+.recoveryLinks a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--primary);
+  font-weight: 600;
+}
+.recoveryLinks a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+@media (max-width: 380px) {
+  .recordAction {
+    max-width: 76px;
   }
 }

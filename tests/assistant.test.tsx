@@ -81,7 +81,7 @@ test('quick questions remain usable without AI setup and show fresh, linked sour
     expect.any(AbortSignal),
   );
   expect(
-    screen.getByRole('link', { name: 'Balances' }).getAttribute('href'),
+    screen.getByRole('link', { name: 'View balance' }).getAttribute('href'),
   ).toBe('/money?view=balances&household=home');
   expect(screen.getByText(/Ask again to refresh/)).toBeTruthy();
   expect(
@@ -104,7 +104,8 @@ test('typed questions guard unsent work, expose limits, and clear only after suc
   );
   expect(mocks.ask).not.toHaveBeenCalled();
   expect(screen.queryByRole('checkbox')).toBeNull();
-  expect(screen.getByText(/By asking a general question/)).toBeTruthy();
+  expect(screen.queryByText(/By asking a general question/)).toBeNull();
+  expect(screen.queryByText(/How answers work/)).toBeNull();
   mocks.ask.mockRejectedValueOnce(
     new ApiRequestError(
       429,
@@ -329,7 +330,9 @@ test('record previews expand without losing any source links or making extra req
   expect(expand.getAttribute('aria-expanded')).toBe('false');
   await user.click(expand);
   expect(
-    screen.getByRole('link', { name: 'Record 5 Needed' }).getAttribute('href'),
+    screen
+      .getByRole('link', { name: 'Record 5 Needed Open record' })
+      .getAttribute('href'),
   ).toBe('/house?view=shopping&item=5&household=home');
   expect(expand.getAttribute('aria-expanded')).toBe('true');
   await user.click(screen.getByRole('button', { name: 'Show fewer records' }));
@@ -372,12 +375,17 @@ test('latest answer stays below the composer, earlier replies expand, and cleari
   expect(mocks.ask).toHaveBeenCalledTimes(2);
 });
 
-test('bill shortcut follows the chat and keeps the selected household', async () => {
+test('Board shortcut follows the chat and keeps the selected household', async () => {
   mocks.ask.mockResolvedValue({
     ...answer,
-    topic: 'bills',
-    text: 'Your upcoming bills',
-    sources: [{ label: 'Bills', href: '/money?view=bills&household=home' }],
+    topic: 'board',
+    text: 'Your Board updates',
+    sources: [
+      {
+        label: 'Announcements',
+        href: '/house?view=announcements&household=home',
+      },
+    ],
   });
   const user = userEvent.setup();
   const view = render(
@@ -389,22 +397,24 @@ test('bill shortcut follows the chat and keeps the selected household', async ()
       .getByRole('textbox', { name: 'Ask your own question' })
       .compareDocumentPosition(
         screen.getByRole('button', {
-          name: 'Bills to watch: Which bills are due?',
+          name: 'Board updates: What’s new on the Board?',
         }),
       ) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   await user.click(
     screen.getByRole('button', {
-      name: 'Bills to watch: Which bills are due?',
+      name: 'Board updates: What’s new on the Board?',
     }),
   );
-  await screen.findByText('Your upcoming bills');
-  expect(screen.getByRole('link', { name: 'Bills' }).getAttribute('href')).toBe(
-    '/money?view=bills&household=home',
-  );
+  await screen.findByText('Your Board updates');
+  expect(
+    screen
+      .getByRole('link', { name: 'View announcements' })
+      .getAttribute('href'),
+  ).toBe('/house?view=announcements&household=home');
   expect(screen.queryByRole('button', { name: /Meal plans/ })).toBeNull();
   expect(screen.queryByRole('link', { name: 'Plan a meal' })).toBeNull();
-  expect(mocks.ask.mock.calls[0]?.[2]).toEqual({ topic: 'bills' });
+  expect(mocks.ask.mock.calls[0]?.[2]).toEqual({ topic: 'board' });
   expect(view.container.querySelectorAll('textarea')).toHaveLength(1);
 });
 
@@ -418,4 +428,160 @@ test('legacy action availability does not enable drafting or typed questions wit
   expect(screen.getByRole('textbox')).toHaveProperty('disabled', true);
   expect(screen.queryByText(/Draft commands/)).toBeNull();
   expect(mocks.draft).not.toHaveBeenCalled();
+});
+
+for (const topic of [
+  'general',
+  'board',
+  'announcements',
+  'greeting',
+  'about',
+] as const) {
+  test(`Assistant renders ${topic} replies outside the composer with source links intact`, async () => {
+    mocks.config.mockResolvedValue({
+      naturalLanguageEnabled: true,
+      chatEnabled: true,
+    });
+    mocks.ask.mockResolvedValue({
+      ...answer,
+      topic,
+      text:
+        topic === 'general'
+          ? '<script>do not execute</script> Helpful general advice.'
+          : 'A new kind of answer.',
+      sources: [],
+    });
+    const user = userEvent.setup();
+    const view = render(
+      <AssistantWorkspace household={household} token="token" />,
+    );
+    const input = screen.getByRole('textbox');
+    await waitFor(() => expect(input).toHaveProperty('disabled', false));
+    await user.type(input, 'Hello');
+    await user.click(screen.getByRole('button', { name: 'Ask' }));
+    const latest = await screen.findByRole('region', { name: 'Latest answer' });
+    expect(
+      screen.getByRole('region', { name: 'Ask HouseMate' }).contains(latest),
+    ).toBe(false);
+    expect(within(latest).getByRole('heading')).toBeTruthy();
+    expect(view.container.querySelector('script')).toBeNull();
+    if (topic === 'general')
+      expect(screen.getByText(/General AI answer/)).toBeTruthy();
+    expect(mocks.draft).not.toHaveBeenCalled();
+  });
+}
+
+test('new server capability enables local chat without implying Gemini is configured', async () => {
+  mocks.config.mockResolvedValue({
+    naturalLanguageEnabled: false,
+    chatEnabled: true,
+  });
+  mocks.ask.mockResolvedValue({
+    ...answer,
+    topic: 'greeting',
+    text: 'Hi! I’m HouseMate.',
+  });
+  const user = userEvent.setup();
+  render(<AssistantWorkspace household={household} token="token" />);
+  const input = screen.getByRole('textbox');
+  await waitFor(() => expect(input).toHaveProperty('disabled', false));
+  expect(screen.queryByText(/By asking a general question/)).toBeNull();
+  await user.type(input, 'Hello');
+  await user.click(screen.getByRole('button', { name: 'Ask' }));
+  await screen.findByText('I’m HouseMate.');
+  expect(mocks.draft).not.toHaveBeenCalled();
+});
+test('clarification choices stay read-only and ask a fresh household question', async () => {
+  mocks.ask
+    .mockResolvedValueOnce({
+      ...answer,
+      kind: 'clarification',
+      topic: 'unsupported',
+      text: 'Would you like Board updates or your balance?',
+      choices: [
+        { label: 'Board updates', topic: 'board' },
+        { label: 'My balance', topic: 'balance' },
+      ],
+    })
+    .mockResolvedValueOnce({
+      ...answer,
+      topic: 'board',
+      text: 'Here are your Board updates.',
+    });
+  const user = userEvent.setup();
+  render(<AssistantWorkspace household={household} token="token" />);
+  const input = screen.getByRole('textbox');
+  await waitFor(() => expect(input).toHaveProperty('disabled', false));
+  await user.type(input, 'What is due?');
+  await user.click(screen.getByRole('button', { name: 'Ask' }));
+  const choices = await screen.findByRole('group', {
+    name: 'Choose what to check',
+  });
+  await user.click(
+    within(choices).getByRole('button', { name: 'Board updates' }),
+  );
+  await screen.findByText('Here are your Board updates.');
+  expect(mocks.ask.mock.calls[1][2]).toEqual({ topic: 'board' });
+  expect(mocks.draft).not.toHaveBeenCalled();
+});
+
+test('short follow-ups send only a topic and lose it when answers or household are cleared', async () => {
+  mocks.ask.mockResolvedValue({
+    ...answer,
+    topic: 'events',
+    text: 'Upcoming events.',
+  });
+  const user = userEvent.setup();
+  const view = render(
+    <AssistantWorkspace household={household} token="token" />,
+  );
+  const input = screen.getByRole('textbox');
+  await waitFor(() => expect(input).toHaveProperty('disabled', false));
+  await user.type(input, 'What events are there?');
+  await user.click(screen.getByRole('button', { name: 'Ask' }));
+  await screen.findByText('Upcoming events.');
+  await user.type(input, 'What about today?');
+  await user.click(screen.getByRole('button', { name: 'Ask' }));
+  await waitFor(() => expect(mocks.ask).toHaveBeenCalledTimes(2));
+  expect(mocks.ask.mock.calls[1][2]).toEqual({
+    message: 'What about today?',
+    privacyAcknowledged: true,
+    context: { topic: 'events' },
+  });
+  await screen.findByText('Earlier answers (1)');
+  await user.click(screen.getByRole('button', { name: 'Clear answers' }));
+  await user.type(input, 'Hello');
+  await user.click(screen.getByRole('button', { name: 'Ask' }));
+  await waitFor(() => expect(mocks.ask).toHaveBeenCalledTimes(3));
+  expect(mocks.ask.mock.calls[2][2]).not.toHaveProperty('context');
+  view.rerender(
+    <AssistantWorkspace
+      household={{ ...household, id: 'other-home' }}
+      token="token"
+    />,
+  );
+  await waitFor(() => expect(input).toHaveProperty('value', ''));
+  expect(screen.queryByRole('article')).toBeNull();
+});
+
+test('general replies render escaped paragraphs and bullets without factual checked labels', async () => {
+  mocks.ask.mockResolvedValue({
+    ...answer,
+    topic: 'general',
+    text: 'Keep it simple.\n\n- Store dry rice in a sealed container.\n- Keep it away from moisture.',
+    sources: [],
+  });
+  const user = userEvent.setup();
+  const view = render(
+    <AssistantWorkspace household={household} token="token" />,
+  );
+  await user.click(
+    screen.getByRole('button', { name: 'Catch me up: What needs attention?' }),
+  );
+  await screen.findByText('Keep it simple.');
+  expect(
+    screen.getByText('Store dry rice in a sealed container.').closest('li'),
+  ).toBeTruthy();
+  expect(view.container.textContent).not.toContain('Checked');
+  expect(screen.getByText(/General AI answer/)).toBeTruthy();
 });

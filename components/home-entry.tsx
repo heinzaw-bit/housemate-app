@@ -22,8 +22,11 @@ function EntryLoading() {
 }
 
 export function HomeEntry({ children }: { children: ReactNode }) {
-  const { session, error } = useAuth();
-  const [authIntent, setAuthIntent] = useState(false);
+  const { session, checking, error } = useAuth();
+  const [entry, setEntry] = useState<{
+    authIntent: boolean;
+    standalone: boolean;
+  } | null>(null);
   useEffect(() => {
     const url = new URL(window.location.href);
     const fragment = new URLSearchParams(url.hash.slice(1));
@@ -33,16 +36,28 @@ export function HomeEntry({ children }: { children: ReactNode }) {
     } catch {
       // URL invites and callbacks can still open authentication.
     }
-    setAuthIntent(
+    const authIntent =
       invitePending ||
-        url.searchParams.has('invite') ||
-        url.searchParams.has('household') ||
-        url.searchParams.has('error') ||
-        fragment.has('access_token') ||
-        fragment.has('error'),
-    );
+      url.searchParams.has('invite') ||
+      url.searchParams.has('household') ||
+      url.searchParams.has('error') ||
+      fragment.has('access_token') ||
+      fragment.has('error');
+    const mode = window.matchMedia('(display-mode: standalone)');
+    const check = () =>
+      setEntry({
+        authIntent,
+        standalone:
+          mode.matches ||
+          !!(navigator as Navigator & { standalone?: boolean }).standalone,
+      });
+    check();
+    mode.addEventListener('change', check);
+    return () => mode.removeEventListener('change', check);
   }, []);
-  if (session || error || authIntent) return <AppView section="home" />;
+  if (checking || !entry) return <EntryLoading />;
+  if (session || error || entry.authIntent || entry.standalone)
+    return <AppView section="home" />;
   return children;
 }
 

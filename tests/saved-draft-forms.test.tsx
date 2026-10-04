@@ -202,7 +202,7 @@ test('bill restores adjustments and explicitly empty participants instead of def
   expect(api.previewBill).not.toHaveBeenCalled();
 });
 
-test('Assistant restores only an unsent question after explicit resume without automatic calls', async () => {
+test('Assistant keeps unsent questions in memory without saving or recovery controls', async () => {
   vi.mocked(api.getAssistantConfig).mockResolvedValue({
     naturalLanguageEnabled: true,
   } as never);
@@ -213,13 +213,19 @@ test('Assistant restores only an unsent question after explicit resume without a
   const input = screen.getByLabelText('Ask your own question');
   await waitFor(() => expect(input).toHaveProperty('disabled', false));
   await user.type(input, 'Which bills are due?');
+  expect(
+    localStorage.getItem(draftKey('account', 'home', 'assistant')),
+  ).toBeNull();
+  expect(screen.queryByText(/Draft saved on this device/)).toBeNull();
+  expect(screen.queryByRole('button', { name: /Discard.*draft/i })).toBeNull();
   first.unmount();
   wrap(<AssistantWorkspace household={household} token="private-session" />);
-  await user.click(await screen.findByRole('button', { name: 'Resume draft' }));
+  await waitFor(() => expect(api.getAssistantConfig).toHaveBeenCalledTimes(2));
   expect(screen.getByLabelText('Ask your own question')).toHaveProperty(
     'value',
-    'Which bills are due?',
+    '',
   );
+  expect(screen.queryByRole('button', { name: 'Resume draft' })).toBeNull();
   expect(api.getMembers).not.toHaveBeenCalled();
   expect(api.askAssistant).not.toHaveBeenCalled();
   expect(api.prepareAssistantDraft).not.toHaveBeenCalled();
@@ -239,12 +245,23 @@ test('obsolete Assistant action seeds cannot reopen an editor or invoke an actio
   await user.type(input, 'Old action');
   first.unmount();
   const key = draftKey('account', 'home', 'assistant');
-  const snapshot = JSON.parse(localStorage.getItem(key) ?? '{}');
-  snapshot.value.action = JSON.stringify({
-    kind: 'shopping',
-    fields: { title: 'Eggs' },
-    recipientIds: [],
-  });
+  const snapshot = {
+    version: 1,
+    accountId: 'account',
+    householdId: 'home',
+    kind: 'assistant',
+    context: 'THB:Asia/Bangkok',
+    savedAt: Date.now(),
+    attempt: null,
+    value: {
+      message: 'Old action',
+      action: JSON.stringify({
+        kind: 'shopping',
+        fields: { title: 'Eggs' },
+        recipientIds: [],
+      }),
+    },
+  };
   localStorage.setItem(key, JSON.stringify(snapshot));
   wrap(<AssistantWorkspace household={household} token="private-session" />);
   await waitFor(() => expect(api.getAssistantConfig).toHaveBeenCalledTimes(2));

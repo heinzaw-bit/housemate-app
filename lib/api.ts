@@ -49,16 +49,28 @@ export type AssistantTopic =
   | 'meals'
   | 'chores'
   | 'shopping'
-  | 'events';
+  | 'events'
+  | 'announcements'
+  | 'board';
+export const assistantContextTopics = [
+  'summary',
+  'board',
+  'balance',
+  'bills',
+  'announcements',
+  'events',
+] as const;
+export type AssistantContextTopic = (typeof assistantContextTopics)[number];
 export interface AssistantAnswer {
   kind: 'answer' | 'clarification';
-  topic: AssistantTopic | 'unsupported';
+  topic: AssistantTopic | 'unsupported' | 'greeting' | 'about' | 'general';
   text: string;
   generatedAt: string;
   timezone: string;
   rows: { label: string; detail: string; href: string }[];
   sources: { label: string; href: string }[];
   partial: boolean;
+  choices?: { label: string; topic: AssistantContextTopic }[];
 }
 export const assistantActionKinds = [
   'meal',
@@ -129,6 +141,7 @@ export function getAssistantConfig(
 ) {
   return request<{
     naturalLanguageEnabled: boolean;
+    chatEnabled?: boolean;
     actionDraftsEnabled: boolean;
     supportedDraftKinds?: AssistantActionKind[];
     provider: 'gemini' | null;
@@ -142,7 +155,12 @@ export function askAssistant(
   householdId: string,
   question:
     | { topic: AssistantTopic; message?: never }
-    | { message: string; topic?: never; privacyAcknowledged: true },
+    | {
+        message: string;
+        topic?: never;
+        privacyAcknowledged: true;
+        context?: { topic: AssistantContextTopic };
+      },
   signal?: AbortSignal,
 ) {
   return request<AssistantAnswer>(
