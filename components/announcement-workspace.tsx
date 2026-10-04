@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -60,6 +60,7 @@ export function AnnouncementWorkspace({
   });
   const audience = useCommunicationMembers(token, household.id);
   const [formOpen, setFormOpen] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   useLeaveGuard(formOpen);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -112,6 +113,19 @@ export function AnnouncementWorkspace({
   useEffect(() => {
     if (createRequest) setFormOpen(true);
   }, [createRequest]);
+  useEffect(() => {
+    if (!createRequest || !formOpen) return;
+    const form = formRef.current;
+    (form?.querySelector<HTMLInputElement>('input') ?? form)?.focus({
+      preventScroll: true,
+    });
+    form?.scrollIntoView({
+      block: 'start',
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'instant'
+        : 'smooth',
+    });
+  }, [createRequest, formOpen]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -225,6 +239,8 @@ export function AnnouncementWorkspace({
           </CardHeader>
           <CardContent>
             <form
+              ref={formRef}
+              tabIndex={-1}
               onSubmit={(event) => void submit(event)}
               className="space-y-4"
             >
@@ -362,6 +378,21 @@ export function AnnouncementWorkspace({
                 </>
               )}
               <div className="flex flex-wrap gap-2">
+                {compact && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={saving}
+                    aria-label="Cancel announcement draft"
+                    onClick={() => {
+                      savedDraft.clear();
+                      setFormOpen(false);
+                      setReviewing(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                )}
                 {reviewing && (
                   <Button
                     type="button"

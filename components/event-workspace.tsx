@@ -17,6 +17,7 @@ import {
   respondToEvent,
 } from '@/lib/api';
 import { useLeaveGuard } from '@/lib/pending-work';
+import { RecordRefreshStatus } from './communication-parts';
 import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
 function localAt(timezone: string, hoursAhead: number): string {
@@ -72,12 +73,14 @@ export function EventWorkspace({
   const [hasMore, setHasMore] = useState(false);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [updatedAt, setUpdatedAt] = useState('');
   const [loadingMore, setLoadingMore] = useState(false);
   const [saving, setSaving] = useState(false);
   const [responding, setResponding] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [formOpen, setFormOpen] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   useLeaveGuard(formOpen);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -139,6 +142,7 @@ export function EventWorkspace({
 
   useEffect(() => {
     const request = ++requestNumber.current;
+    setUpdatedAt('');
     setLoading(true);
     setError('');
     void getEvents(token, household.id, scope)
@@ -146,6 +150,7 @@ export function EventWorkspace({
         (next) => {
           if (request !== requestNumber.current) return;
           setEvents(next);
+          setUpdatedAt(new Date().toISOString());
           setOffset(next.length);
           setHasMore(next.length === 50);
           setSelectedId((old) =>
@@ -174,6 +179,19 @@ export function EventWorkspace({
   useEffect(() => {
     if (createRequest) setFormOpen(true);
   }, [createRequest]);
+  useEffect(() => {
+    if (!createRequest || !formOpen) return;
+    const form = formRef.current;
+    (form?.querySelector<HTMLInputElement>('input') ?? form)?.focus({
+      preventScroll: true,
+    });
+    form?.scrollIntoView({
+      block: 'start',
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'instant'
+        : 'smooth',
+    });
+  }, [createRequest, formOpen]);
   useEffect(() => {
     if (!focusedId || !focusSignal) return;
     let active = true;
@@ -211,6 +229,7 @@ export function EventWorkspace({
       const next = await getEvents(token, household.id, scope);
       if (request !== requestNumber.current) return;
       setEvents(next);
+      setUpdatedAt(new Date().toISOString());
       setOffset(next.length);
       setHasMore(next.length === 50);
       setSelectedId((old) =>
@@ -325,43 +344,46 @@ export function EventWorkspace({
     ? `/money?household=${encodeURIComponent(household.id)}&view=expenses&add=1&event=${encodeURIComponent(selected.id)}`
     : '';
   return (
-    <section className="space-y-4" aria-label="Events">
+    <section
+      className={`space-y-4 ${compact ? 'pt-5' : ''}`}
+      aria-label="Events"
+    >
       <SavedDraftNotice
         draft={savedDraft}
         disabled={saving}
         resumeDisabled={loading || !!error}
       />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {!compact && (
+      {!compact && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-heading text-xl">Events</h2>
             <p className="text-sm text-muted-foreground">
               Plan together and see who is going.
             </p>
           </div>
-        )}
-        <div className={`flex gap-2 ${compact ? 'ml-auto' : ''}`}>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void refresh()}
-            disabled={loading}
-            aria-label="Refresh events"
-            title="Refresh events"
-          >
-            <RefreshCw size={15} aria-hidden="true" /> {!compact && 'Refresh'}
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              if (formOpen) savedDraft.clear();
-              setFormOpen((old) => !old);
-            }}
-          >
-            {formOpen ? 'Close form' : 'New event'}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void refresh()}
+              disabled={loading}
+              aria-label="Refresh events"
+              title="Refresh events"
+            >
+              <RefreshCw size={15} aria-hidden="true" /> Refresh
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                if (formOpen) savedDraft.clear();
+                setFormOpen((old) => !old);
+              }}
+            >
+              {formOpen ? 'Close form' : 'New event'}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
       {error && (
         <p
           role="alert"
@@ -384,7 +406,12 @@ export function EventWorkspace({
             <CardTitle>New event</CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={(event) => void save(event)} className="space-y-4">
+            <form
+              ref={formRef}
+              tabIndex={-1}
+              onSubmit={(event) => void save(event)}
+              className="space-y-4"
+            >
               <label
                 htmlFor="event-title"
                 className="block space-y-1.5 text-sm font-medium"
@@ -454,9 +481,25 @@ export function EventWorkspace({
                   className="w-full rounded-xl border border-input bg-background px-3 py-2 font-normal"
                 />
               </label>
-              <Button type="submit" disabled={saving}>
-                {saving ? 'Creating…' : 'Create event'}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                {compact && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={saving}
+                    aria-label="Cancel event draft"
+                    onClick={() => {
+                      savedDraft.clear();
+                      setFormOpen(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                )}
+                <Button type="submit" disabled={saving}>
+                  {saving ? 'Creating…' : 'Create event'}
+                </Button>
+              </div>
             </form>
           </CardContent>
         </Card>
@@ -486,6 +529,14 @@ export function EventWorkspace({
           Past
         </Button>
       </fieldset>
+      {compact && (
+        <RecordRefreshStatus
+          label="events"
+          updatedAt={updatedAt}
+          loading={loading}
+          onRefresh={() => void refresh()}
+        />
+      )}
       {loading && (
         <p role="status" className="text-sm text-muted-foreground">
           Loading events…

@@ -204,32 +204,35 @@ export function CommunicationBrowser<T extends { id: string }>({
     }
   }, [selected?.id]);
   return (
-    <section className="content-inner space-y-4" aria-label={title}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {!compact && (
+    <section
+      className={`content-inner space-y-4 ${compact ? 'pt-5' : ''}`}
+      aria-label={title}
+    >
+      {!compact && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-heading text-xl">{title}</h2>
             <p className="text-sm text-muted-foreground">{subtitle}</p>
           </div>
-        )}
-        <div className={`flex gap-2 ${compact ? 'ml-auto' : ''}`}>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={loading}
-            onClick={onRefresh}
-            aria-label={`Refresh ${title.toLowerCase()}`}
-            title={`Refresh ${title.toLowerCase()}`}
-          >
-            <RefreshCw size={15} aria-hidden="true" /> {!compact && 'Refresh'}
-          </Button>
-          <Button size="sm" onClick={onToggleCreate}>
-            {createOpen
-              ? 'Close form'
-              : `New ${title === 'Polls' ? 'poll' : 'announcement'}`}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={loading}
+              onClick={onRefresh}
+              aria-label={`Refresh ${title.toLowerCase()}`}
+              title={`Refresh ${title.toLowerCase()}`}
+            >
+              <RefreshCw size={15} aria-hidden="true" /> Refresh
+            </Button>
+            <Button size="sm" onClick={onToggleCreate}>
+              {createOpen
+                ? 'Close form'
+                : `New ${title === 'Polls' ? 'poll' : 'announcement'}`}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
       {error && (
         <p
           role="alert"
@@ -249,30 +252,46 @@ export function CommunicationBrowser<T extends { id: string }>({
       )}
       {draftNotice}
       {createOpen && form}
-      <fieldset className="flex flex-wrap gap-2">
+      <fieldset
+        className={compact ? 'board-record-filters' : 'flex flex-wrap gap-2'}
+      >
         <legend className="sr-only">{title} filter</legend>
         {scopes.map((item) => (
           <Button
             key={item.value}
             size="sm"
+            aria-label={
+              compact && item.value === 'needs_ack'
+                ? 'To acknowledge: needs acknowledgement'
+                : item.label
+            }
             aria-pressed={scope === item.value}
             variant={scope === item.value ? 'default' : 'outline'}
             onClick={() => onScope(item.value)}
           >
-            {item.label}
+            {compact && item.value === 'needs_ack'
+              ? 'To acknowledge'
+              : item.label}
           </Button>
         ))}
       </fieldset>
-      {updatedAt && (
+      {compact ? (
+        <RecordRefreshStatus
+          label={title.toLowerCase()}
+          updatedAt={updatedAt}
+          loading={loading}
+          onRefresh={onRefresh}
+        />
+      ) : updatedAt ? (
         <p className="text-xs text-muted-foreground">
           Updated{' '}
           {new Date(updatedAt).toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit',
           })}{' '}
-          {!compact && ' · Refreshes while this section is open.'}
+          · Refreshes while this section is open.
         </p>
-      )}
+      ) : null}
       {loading && (
         <p role="status" className="text-sm text-muted-foreground">
           Loading {title.toLowerCase()}…
@@ -348,5 +367,43 @@ export function CommunicationBrowser<T extends { id: string }>({
         )}
       </div>
     </section>
+  );
+}
+
+export function RecordRefreshStatus({
+  label,
+  updatedAt,
+  loading,
+  onRefresh,
+}: {
+  label: string;
+  updatedAt: string;
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="board-record-status">
+      <p className="text-xs text-muted-foreground">
+        {loading
+          ? 'Updating…'
+          : updatedAt
+            ? `Updated ${new Date(updatedAt).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}`
+            : 'Not updated yet'}
+      </p>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        disabled={loading}
+        onClick={onRefresh}
+        aria-label={`Refresh ${label}`}
+        title={`Refresh ${label}`}
+      >
+        <RefreshCw size={16} aria-hidden="true" />
+      </Button>
+    </div>
   );
 }

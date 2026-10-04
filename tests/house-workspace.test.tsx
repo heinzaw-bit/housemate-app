@@ -18,6 +18,8 @@ vi.mock('../lib/api', async (original) => ({
   getAnnouncements: vi.fn(),
   getAnnouncement: vi.fn(),
   acknowledgeAnnouncement: vi.fn(),
+  createAnnouncement: vi.fn(),
+  createEvent: vi.fn(),
   getEvents: vi.fn(),
   getEvent: vi.fn(),
   respondToEvent: vi.fn(),
@@ -131,6 +133,76 @@ test('Board starts with just two sections and one announcement creation action',
     rules: { 'color-contrast': { enabled: false }, region: { enabled: false } },
   });
   expect(result.violations).toEqual([]);
+});
+
+test('Board header opens the active draft without publishing or resetting it', async () => {
+  render(<HouseWorkspace household={household} token="session" />);
+  await screen.findByRole('button', { name: /Building inspection/ });
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'New announcement' })),
+  );
+  const announcementTitle = screen.getByRole('textbox', {
+    name: 'Title',
+  });
+  fireEvent.change(announcementTitle, { target: { value: 'Water update' } });
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'New announcement' })),
+  );
+  expect((announcementTitle as HTMLInputElement).value).toBe('Water update');
+  expect(document.activeElement).toBe(announcementTitle);
+  await act(async () =>
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Cancel announcement draft' }),
+    ),
+  );
+  expect(screen.queryByRole('textbox', { name: 'Title' })).toBeNull();
+  expect(api.createAnnouncement).not.toHaveBeenCalled();
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Events' })),
+  );
+  await screen.findByRole('button', { name: /House dinner/ });
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'New event' })),
+  );
+  const eventTitle = screen.getByRole('textbox', { name: 'Event title' });
+  fireEvent.change(eventTitle, { target: { value: 'Dinner together' } });
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'New event' })),
+  );
+  expect((eventTitle as HTMLInputElement).value).toBe('Dinner together');
+  expect(document.activeElement).toBe(eventTitle);
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel event draft' })),
+  );
+  expect(screen.queryByRole('textbox', { name: 'Event title' })).toBeNull();
+  expect(api.createEvent).not.toHaveBeenCalled();
+});
+
+test('Board status refresh reloads the selected section without creating records', async () => {
+  render(<HouseWorkspace household={household} token="session" />);
+  await screen.findByRole('button', { name: /Building inspection/ });
+  vi.mocked(api.getAnnouncements).mockClear();
+  await act(async () =>
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Refresh announcements' }),
+    ),
+  );
+  expect(api.getAnnouncements).toHaveBeenCalledTimes(1);
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Events' })),
+  );
+  await screen.findByRole('button', { name: /House dinner/ });
+  vi.mocked(api.getEvents).mockClear();
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh events' })),
+  );
+  expect(api.getEvents).toHaveBeenCalledExactlyOnceWith(
+    'session',
+    'home',
+    'upcoming',
+  );
+  expect(api.createAnnouncement).not.toHaveBeenCalled();
+  expect(api.createEvent).not.toHaveBeenCalled();
 });
 
 test('loaded notices prioritise active urgent/important items and open mobile detail', async () => {

@@ -14,7 +14,6 @@ import {
   getAssistantConfig,
   type Household,
 } from '@/lib/api';
-import { moneyCreateHref } from '@/lib/dashboard';
 import { useLeaveGuard } from '@/lib/pending-work';
 import styles from './assistant-workspace.module.css';
 import { HouseMateMascot } from './housemate-mascot';
@@ -356,7 +355,6 @@ export function AssistantWorkspace({
           <AnswerCard
             key={latest.id}
             turn={latest}
-            householdId={household.id}
             busy={busy}
             onChoose={(choice) =>
               void ask({ topic: choice.topic }, choice.label)
@@ -374,7 +372,7 @@ export function AssistantWorkspace({
             {earlier.map((turn) => (
               <li key={turn.id}>
                 <p className={styles.question}>{turn.question}</p>
-                <AnswerCard turn={turn} householdId={household.id} />
+                <AnswerCard turn={turn} />
               </li>
             ))}
           </ol>
@@ -394,17 +392,18 @@ function HouseHelper() {
 
 function AnswerCard({
   turn: { id, question, answer },
-  householdId,
   busy = false,
   onChoose,
 }: {
   turn: Turn;
-  householdId: string;
   busy?: boolean;
   onChoose?: (choice: { label: string; topic: AssistantContextTopic }) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const visibleRows = expanded ? answer.rows : answer.rows.slice(0, 3);
+  const footerSources = answer.sources.filter(
+    (source) => !source.href.includes('view=balances'),
+  );
   return (
     <article className={styles.answer} aria-label={`Answer to ${question}`}>
       <h2 className={styles.answerTitle}>
@@ -493,24 +492,15 @@ function AnswerCard({
           the full list.
         </p>
       )}
-      {answer.sources.length > 0 && (
+      {footerSources.length > 0 && (
         <nav className={styles.sources} aria-label={`Sources for ${question}`}>
-          {answer.sources.map((source) => (
+          {footerSources.map((source) => (
             <Link key={source.href} href={source.href}>
               {sourceAction(source)}
               <ArrowUpRight size={14} aria-hidden="true" />
             </Link>
           ))}
         </nav>
-      )}
-      {(answer.topic === 'balance' || answer.topic === 'bills') && (
-        <Link
-          className={styles.nextAction}
-          href={moneyCreateHref(householdId, 'expenses')}
-        >
-          Calculate a split
-          <ArrowUpRight size={15} aria-hidden="true" />
-        </Link>
       )}
       <p className={styles.timestamp}>
         {assistantContextTopics.some((topic) => topic === answer.topic)

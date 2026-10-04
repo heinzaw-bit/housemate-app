@@ -62,7 +62,7 @@ afterEach(() => {
   cleanup();
 });
 
-test('quick questions remain usable without AI setup and show fresh, linked sources', async () => {
+test('quick questions remain usable without AI setup and show a fresh balance without route actions', async () => {
   mocks.config.mockResolvedValue({ naturalLanguageEnabled: false });
   const user = userEvent.setup();
   render(<AssistantWorkspace household={household} token="token" />);
@@ -80,15 +80,9 @@ test('quick questions remain usable without AI setup and show fresh, linked sour
     { topic: 'balance' },
     expect.any(AbortSignal),
   );
-  expect(
-    screen.getByRole('link', { name: 'View balance' }).getAttribute('href'),
-  ).toBe('/money?view=balances&household=home');
+  expect(screen.queryByRole('link', { name: 'View balance' })).toBeNull();
   expect(screen.getByText(/Ask again to refresh/)).toBeTruthy();
-  expect(
-    screen
-      .getByRole('link', { name: 'Calculate a split' })
-      .getAttribute('href'),
-  ).toBe('/money?household=home&view=expenses&add=1');
+  expect(screen.queryByRole('link', { name: 'Calculate a split' })).toBeNull();
 });
 
 test('typed questions guard unsent work, expose limits, and clear only after success', async () => {

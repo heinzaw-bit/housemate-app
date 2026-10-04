@@ -1,5 +1,6 @@
 'use client';
 
+import { Plus } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -147,9 +148,29 @@ export function HouseWorkspace({
     <div className="space-y-5 pb-6">
       <div className="content-inner space-y-5 pt-5">
         <div className="page-heading-row">
-          <div>
+          <div className="board-heading">
             <span className="eyebrow">SHARED UPDATES, PLANS TOGETHER</span>
-            <h1>Board</h1>
+            <div className="board-title-row">
+              <h1>Board</h1>
+              {!legacy && (
+                <Button
+                  type="button"
+                  className="board-create-button"
+                  aria-label={
+                    view === 'events' ? 'New event' : 'New announcement'
+                  }
+                  onClick={() =>
+                    setCreateRequest({ view, id: ++createNumber.current })
+                  }
+                >
+                  <Plus size={17} aria-hidden="true" />
+                  <span className="board-create-short">New</span>
+                  <span className="board-create-full">
+                    {view === 'events' ? 'New event' : 'New announcement'}
+                  </span>
+                </Button>
+              )}
+            </div>
             <p>Share announcements, plan events, and see who’s joining.</p>
           </div>
         </div>

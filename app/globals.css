@@ -1960,8 +1960,9 @@ a {
     font-size: 19px;
   }
   .mobile-brand .brand-icon {
-    width: 32px;
-    height: 32px;
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
   }
   .topbar {
     min-height: 68px;
@@ -3639,5 +3640,50 @@ input[type="radio"] {
   .mobile-household-control {
     display: block;
     padding: 12px clamp(20px, 4vw, 58px) 0;
+  }
+}
+
+/* Board filters stay on one row, including at enlarged phone text sizes. */
+.board-record-filters {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 4px;
+  scroll-padding-inline: 4px;
+}
+
+.board-heading {
+  width: 100%;
+  min-width: 0;
+}
+.board-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.board-create-button {
+  margin-left: auto;
+}
+.board-create-short {
+  display: none;
+}
+.board-record-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+@media (max-width: 650px) {
+  .board-create-full {
+    display: none;
+  }
+  .board-create-short {
+    display: inline;
   }
 }
