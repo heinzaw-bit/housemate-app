@@ -3,10 +3,13 @@
 import { Plus, ReceiptText, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { FinancialHistory } from '@/components/financial-history';
+import { ReadStatus } from '@/components/read-status';
+import { SuccessNotice } from '@/components/success-notice';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { VoidConfirmation } from '@/components/void-confirmation';
+import { WorkspaceLoading } from '@/components/workspace-loading';
 import {
   ApiRequestError,
   type Bill,
@@ -31,6 +34,7 @@ import { displayBillPreview } from '@/lib/bill-presentation';
 import { formatRecordDate as date } from '@/lib/date-format';
 import { confirmationFailure } from '@/lib/financial-confirmation';
 import { useLeaveGuard } from '@/lib/pending-work';
+import { householdReadPath, recentRead } from '@/lib/recent-reads';
 import { appendRecords } from '@/lib/record-pages';
 import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
@@ -92,13 +96,26 @@ export function BillWorkspace({
   initialCreate?: boolean;
   onMoneyChanged: () => void;
 }) {
-  const [members, setMembers] = useState<HouseholdMember[]>([]);
-  const [bills, setBills] = useState<Bill[]>([]);
+  const [members, setMembers] = useState<HouseholdMember[]>(
+    () =>
+      recentRead<{ members: HouseholdMember[] }>(
+        token,
+        householdReadPath(household.id, 'members'),
+      )?.value.members ?? [],
+  );
+  const [bills, setBills] = useState<Bill[]>(
+    () =>
+      recentRead<{ bills: Bill[] }>(
+        token,
+        householdReadPath(household.id, 'bills?limit=50&offset=0'),
+      )?.value.bills ?? [],
+  );
   const [selected, setSelected] = useState<Bill | null>(null);
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [detailsExpanded, setDetailsExpanded] = useState(true);
   const historyPanelId = useId();
   const detailsPanelId = useId();
+  const readPath = householdReadPath(household.id, 'bills?limit=50&offset=0');
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -189,6 +206,14 @@ export function BillWorkspace({
         old.length ? old : nextMembers.map((member) => member.id),
       );
     } catch (error) {
+      if (
+        error instanceof ApiRequestError &&
+        [401, 403, 404].includes(error.status)
+      ) {
+        setBills([]);
+        setMembers([]);
+        setSelected(null);
+      }
       setLoadError(
         error instanceof Error ? error.message : 'Could not load bills.',
       );
@@ -576,12 +601,12 @@ export function BillWorkspace({
         </Button>
       </div>
       {notice && (
-        <p
-          role="status"
+        <SuccessNotice
+          key={notice}
           className="rounded-xl bg-primary/10 px-4 py-3 text-sm text-primary"
         >
           {notice}
-        </p>
+        </SuccessNotice>
       )}
       {formOpen && (
         <Card ref={editFormRef} className="scroll-mt-6">
@@ -1131,8 +1156,14 @@ export function BillWorkspace({
           </Button>
         </p>
       )}
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Loading bills…</p>
+      <ReadStatus
+        token={token}
+        path={readPath}
+        refreshing={loading}
+        error={loadError}
+      />
+      {loading && !recentRead(token, readPath) ? (
+        <WorkspaceLoading kind="records" />
       ) : (
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.9fr)]">
           <Card className={selected ? 'max-lg:hidden' : undefined}>
@@ -1152,7 +1183,11 @@ export function BillWorkspace({
                 )}
               </div>
             </CardHeader>
-            <CardContent id={historyPanelId} className="space-y-2">
+            <CardContent
+              id={historyPanelId}
+              data-motion-expanded={historyExpanded}
+              className="space-y-2"
+            >
               {bills.length === 0 && (
                 <p className="text-sm text-muted-foreground">
                   No bills yet. Add your first household bill.

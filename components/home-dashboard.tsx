@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowUpRight, ReceiptText, RefreshCw } from 'lucide-react';
+import { ArrowUpRight, ReceiptText } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { WorkspaceLoading } from '@/components/workspace-loading';
 import {
   ApiRequestError,
   type Dashboard,
@@ -26,6 +27,7 @@ import {
   moneyHref,
 } from '@/lib/dashboard';
 import { formatRecordDate } from '@/lib/date-format';
+import { householdReadPath, recentRead } from '@/lib/recent-reads';
 
 export function HomeDashboard({
   household,
@@ -34,15 +36,16 @@ export function HomeDashboard({
   household: Household;
   token: string;
 }) {
-  const [data, setData] = useState<Dashboard | null>(null);
+  const readPath = householdReadPath(household.id, 'dashboard');
+  const [data, setData] = useState<Dashboard | null>(
+    () => recentRead<Dashboard>(token, readPath)?.value ?? null,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [stale, setStale] = useState(false);
-  const [retry, setRetry] = useState(0);
   const [showAllActivity, setShowAllActivity] = useState(false);
   const refreshedAt = useRef(0);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Retry explicitly starts a fresh request lifecycle.
   useEffect(() => {
     let active = true;
     let pending = false;
@@ -103,7 +106,7 @@ export function HomeDashboard({
       window.removeEventListener('offline', offline);
       document.removeEventListener('visibilitychange', resume);
     };
-  }, [token, household.id, retry]);
+  }, [token, household.id]);
 
   const viewer = data?.balance.members.find(
     (member) => member.memberId === data.balance.viewerMemberId,
@@ -128,30 +131,16 @@ export function HomeDashboard({
               : 'Dashboard unavailable.'
             : `${stale ? 'May be out of date. Last updated' : 'Updated'} ${time(data.generatedAt)} · ${data.timezone}${loading ? ' · Refreshing…' : ''}`}
         </p>
-        <Button
-          variant="outline"
-          disabled={loading}
-          onClick={() => setRetry((value) => value + 1)}
-        >
-          <RefreshCw size={16} aria-hidden="true" />
-          {loading ? 'Refreshing…' : 'Refresh'}
-        </Button>
       </div>
       {error && (
         <p role="alert" className="form-message error">
           {error}{' '}
           {data
             ? 'Showing the last successful update; totals may have changed.'
-            : 'Use Refresh to try again.'}
+            : 'The dashboard will refresh automatically when connected.'}
         </p>
       )}
-      {loading && !data && (
-        <Card aria-busy="true">
-          <CardContent className="py-8 text-muted-foreground">
-            Checking balances, bills, and household plans…
-          </CardContent>
-        </Card>
-      )}
+      {loading && !data && <WorkspaceLoading kind="home" />}
       {data && (
         <>
           <section
@@ -339,7 +328,10 @@ export function HomeDashboard({
                     No financial activity yet. Add your first expense or bill.
                   </p>
                 ) : (
-                  <ul className="divide-y">
+                  <ul
+                    className="divide-y"
+                    data-motion-expanded={showAllActivity}
+                  >
                     {data.recentActivity
                       .slice(0, showAllActivity ? undefined : 3)
                       .map((event) => (

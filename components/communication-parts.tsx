@@ -2,9 +2,11 @@
 
 import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SuccessNotice } from '@/components/success-notice';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getMembers, type HouseholdMember } from '@/lib/api';
+import { WorkspaceLoading } from './workspace-loading';
 
 export function householdLocalTime(
   timezone: string,
@@ -243,12 +245,12 @@ export function CommunicationBrowser<T extends { id: string }>({
         </p>
       )}
       {notice && (
-        <p
-          role="status"
+        <SuccessNotice
+          key={notice}
           className="rounded-xl bg-primary/10 p-3 text-sm text-primary"
         >
           {notice}
-        </p>
+        </SuccessNotice>
       )}
       {draftNotice}
       {createOpen && form}
@@ -292,11 +294,7 @@ export function CommunicationBrowser<T extends { id: string }>({
           · Refreshes while this section is open.
         </p>
       ) : null}
-      {loading && (
-        <p role="status" className="text-sm text-muted-foreground">
-          Loading {title.toLowerCase()}…
-        </p>
-      )}
+      {loading && !updatedAt && <WorkspaceLoading />}
       {detailLoading && (
         <p role="status" className="text-sm text-muted-foreground">
           Opening details…
@@ -314,7 +312,7 @@ export function CommunicationBrowser<T extends { id: string }>({
             </CardHeader>
           )}
           <CardContent className="space-y-2">
-            {!loading && !records.length && !error && (
+            {(!loading || updatedAt) && !records.length && !error && (
               <p className="py-6 text-center text-sm text-muted-foreground">
                 No {title.toLowerCase()} in this view yet.
               </p>
@@ -385,7 +383,9 @@ export function RecordRefreshStatus({
     <div className="board-record-status">
       <p className="text-xs text-muted-foreground">
         {loading
-          ? 'Updating…'
+          ? updatedAt
+            ? `Last updated ${new Date(updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · Updating…`
+            : 'Updating…'
           : updatedAt
             ? `Updated ${new Date(updatedAt).toLocaleTimeString([], {
                 hour: '2-digit',

@@ -3,6 +3,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { AppShell } from '../components/app-shell';
 import { AppView } from '../components/app-view';
 import type { ApiUser } from '../lib/api';
 import * as api from '../lib/api';
@@ -13,6 +14,10 @@ const auth = vi.hoisted(() => ({
   checking: false,
   configured: true,
   error: '',
+}));
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(window.location.search),
+  usePathname: () => window.location.pathname,
 }));
 vi.mock('../lib/auth-context', () => ({ useAuth: () => auth }));
 vi.mock('../components/workspace', () => ({
@@ -90,6 +95,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 test('account changes hide old household views immediately while fresh API reads are pending', async () => {
@@ -177,4 +183,56 @@ test('switching households preserves the section while clearing old entity links
   expect(url.searchParams.has('record')).toBe(false);
   expect(url.searchParams.has('event')).toBe(false);
   expect(url.searchParams.has('add')).toBe(false);
+});
+
+test('main tab navigation keeps the shell node and avoids repeating account reads', async () => {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+  window.history.replaceState(null, '', '/');
+  vi.mocked(api.getMe).mockResolvedValue(user('account-a'));
+  vi.mocked(api.getHousehold).mockResolvedValue(
+    (await api.getHouseholds('token-a'))[0],
+  );
+  const view = render(
+    <AppShell>
+      <p>Public landing</p>
+    </AppShell>,
+  );
+  const shellNode = await screen.findByText('Account: account-a');
+  const count = vi.mocked(api.getMe).mock.calls.length;
+  const memberships = vi.mocked(api.getHouseholds).mock.calls.length;
+  for (const path of ['/money', '/house', '/assistant', '/profile', '/']) {
+    window.history.replaceState(null, '', `${path}?household=home`);
+    view.rerender(
+      <AppShell>
+        <p>Public landing</p>
+      </AppShell>,
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Account: account-a')).toBe(shellNode),
+    );
+  }
+  expect(api.getMe).toHaveBeenCalledTimes(count);
+  expect(api.getHouseholds).toHaveBeenCalledTimes(memberships);
+  expect(screen.queryByText('Public landing')).toBeNull();
+});
+
+test('a changed household URL never displays a different household as its fallback', async () => {
+  vi.mocked(api.getMe).mockResolvedValue(user('account-a'));
+  const view = render(<AppView section="money" />);
+  await screen.findByText('Active household: Home');
+  vi.mocked(api.getHousehold).mockRejectedValue(
+    new api.ApiRequestError(404, 'NOT_FOUND', 'No access.'),
+  );
+  window.history.replaceState(null, '', '/money?household=foreign');
+  view.rerender(<AppView section="money" />);
+  expect(screen.queryByText('Active household: Home')).toBeNull();
+  await screen.findByText('You do not have access to this household.');
+  expect(screen.queryByText('Active household: Home')).toBeNull();
 });

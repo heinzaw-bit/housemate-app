@@ -455,7 +455,11 @@ function AnswerCard({
           </fieldset>
         )}
       {answer.rows.length > 0 && (
-        <ul id={`assistant-records-${id}`} className={styles.records}>
+        <ul
+          id={`assistant-records-${id}`}
+          data-motion-expanded={expanded}
+          className={styles.records}
+        >
           {visibleRows.map((row) => (
             <li key={row.href}>
               <Link href={row.href}>

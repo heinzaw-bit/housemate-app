@@ -2,10 +2,14 @@
 
 import { ArrowRight, HandCoins, ListFilter } from 'lucide-react';
 import { useCallback, useEffect, useId, useState } from 'react';
+import { ReadStatus } from '@/components/read-status';
+import { SuccessNotice } from '@/components/success-notice';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { WorkspaceLoading } from '@/components/workspace-loading';
 import {
+  ApiRequestError,
   type BalanceEntry,
   type BalanceSummary,
   createSettlement,
@@ -23,6 +27,7 @@ import {
 } from '@/lib/api';
 import { confirmationFailure } from '@/lib/financial-confirmation';
 import { useLeaveGuard } from '@/lib/pending-work';
+import { householdReadPath, recentRead } from '@/lib/recent-reads';
 
 function parseMinor(value: string): number | null {
   if (!/^\d+(?:\.\d{1,2})?$/.test(value.trim())) return null;
@@ -86,8 +91,20 @@ export function BalanceWorkspace({
   const [linkedTransfer, setLinkedTransfer] = useState<Settlement | null>(null);
   const [linkedError, setLinkedError] = useState('');
   const [linkedRetry, setLinkedRetry] = useState(0);
-  const [summary, setSummary] = useState<BalanceSummary | null>(null);
-  const [settlements, setSettlements] = useState<Settlement[]>([]);
+  const [summary, setSummary] = useState<BalanceSummary | null>(
+    () =>
+      recentRead<BalanceSummary>(
+        token,
+        householdReadPath(household.id, 'balances'),
+      )?.value ?? null,
+  );
+  const [settlements, setSettlements] = useState<Settlement[]>(
+    () =>
+      recentRead<{ settlements: Settlement[] }>(
+        token,
+        householdReadPath(household.id, 'settlements?limit=50&offset=0'),
+      )?.value.settlements ?? [],
+  );
   const [hasMoreSettlements, setHasMoreSettlements] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState('');
   const [entries, setEntries] = useState<BalanceEntry[]>([]);
@@ -182,6 +199,15 @@ export function BalanceWorkspace({
           '',
       );
     } catch (error) {
+      if (
+        error instanceof ApiRequestError &&
+        [401, 403, 404].includes(error.status)
+      ) {
+        setSummary(null);
+        setSettlements([]);
+        setEntries([]);
+        setLinkedTransfer(null);
+      }
       setLoadError(
         error instanceof Error ? error.message : 'Could not load balances.',
       );
@@ -448,12 +474,12 @@ export function BalanceWorkspace({
         </Button>
       </div>
       {notice && (
-        <p
-          role="status"
+        <SuccessNotice
+          key={notice}
           className="rounded-xl bg-primary/10 px-4 py-3 text-sm text-primary"
         >
           {notice}
-        </p>
+        </SuccessNotice>
       )}
       {loadError && (
         <p
@@ -466,8 +492,14 @@ export function BalanceWorkspace({
           </Button>
         </p>
       )}
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Loading balances…</p>
+      <ReadStatus
+        token={token}
+        path={householdReadPath(household.id, 'balances')}
+        refreshing={loading}
+        error={loadError}
+      />
+      {loading && !summary ? (
+        <WorkspaceLoading kind="money" />
       ) : (
         summary && (
           <>
@@ -544,7 +576,11 @@ export function BalanceWorkspace({
                       {entryError}
                     </p>
                   )}
-                  <div id={entriesId} className="space-y-3">
+                  <div
+                    id={entriesId}
+                    data-motion-expanded={entriesExpanded}
+                    className="space-y-3"
+                  >
                     {entriesLoading ? (
                       <p className="text-sm text-muted-foreground">
                         Loading sources…
@@ -631,7 +667,11 @@ export function BalanceWorkspace({
                     here.
                   </p>
                 </CardHeader>
-                <CardContent id={suggestionsId} className="space-y-3">
+                <CardContent
+                  id={suggestionsId}
+                  data-motion-expanded={suggestionsExpanded}
+                  className="space-y-3"
+                >
                   {summary.suggestions.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
                       No transfer suggested right now.
@@ -976,7 +1016,11 @@ export function BalanceWorkspace({
                 </p>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div id={transfersId} className="space-y-3">
+                <div
+                  id={transfersId}
+                  data-motion-expanded={transfersExpanded}
+                  className="space-y-3"
+                >
                   {settlements.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
                       No transfers recorded yet.

@@ -3,10 +3,13 @@
 import { CalendarDays, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import { SuccessNotice } from '@/components/success-notice';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { WorkspaceLoading } from '@/components/workspace-loading';
 import {
+  ApiRequestError,
   createEvent,
   type EventDraft,
   type EventResponse,
@@ -17,6 +20,7 @@ import {
   respondToEvent,
 } from '@/lib/api';
 import { useLeaveGuard } from '@/lib/pending-work';
+import { householdReadPath, recentRead } from '@/lib/recent-reads';
 import { RecordRefreshStatus } from './communication-parts';
 import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
@@ -63,7 +67,16 @@ export function EventWorkspace({
   createRequest?: number;
   compact?: boolean;
 }) {
-  const [events, setEvents] = useState<HouseholdEvent[]>([]);
+  const [events, setEvents] = useState<HouseholdEvent[]>(
+    () =>
+      recentRead<{ events: HouseholdEvent[] }>(
+        token,
+        householdReadPath(
+          household.id,
+          'events?scope=upcoming&limit=50&offset=0',
+        ),
+      )?.value.events ?? [],
+  );
   const [selectedId, setSelectedId] = useState('');
   const [linkedEvent, setLinkedEvent] = useState<{
     record: HouseholdEvent;
@@ -73,7 +86,16 @@ export function EventWorkspace({
   const [hasMore, setHasMore] = useState(false);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [updatedAt, setUpdatedAt] = useState('');
+  const [updatedAt, setUpdatedAt] = useState(() => {
+    const read = recentRead(
+      token,
+      householdReadPath(
+        household.id,
+        'events?scope=upcoming&limit=50&offset=0',
+      ),
+    );
+    return read ? new Date(read.readAt).toISOString() : '';
+  });
   const [loadingMore, setLoadingMore] = useState(false);
   const [saving, setSaving] = useState(false);
   const [responding, setResponding] = useState(false);
@@ -142,7 +164,15 @@ export function EventWorkspace({
 
   useEffect(() => {
     const request = ++requestNumber.current;
-    setUpdatedAt('');
+    const snapshot = recentRead<{ events: HouseholdEvent[] }>(
+      token,
+      householdReadPath(
+        household.id,
+        `events?scope=${scope}&limit=50&offset=0`,
+      ),
+    );
+    setEvents(snapshot?.value.events ?? []);
+    setUpdatedAt(snapshot ? new Date(snapshot.readAt).toISOString() : '');
     setLoading(true);
     setError('');
     void getEvents(token, household.id, scope)
@@ -163,7 +193,15 @@ export function EventWorkspace({
         },
         (failure) => {
           if (request === requestNumber.current) {
-            setEvents([]);
+            if (
+              failure instanceof ApiRequestError &&
+              [401, 403, 404].includes(failure.status)
+            ) {
+              setEvents([]);
+              setSelectedId('');
+              setLinkedEvent(null);
+              setUpdatedAt('');
+            }
             setError(message(failure));
           }
         },
@@ -240,7 +278,18 @@ export function EventWorkspace({
             : (next[0]?.id ?? ''),
       );
     } catch (failure) {
-      if (request === requestNumber.current) setError(message(failure));
+      if (request === requestNumber.current) {
+        if (
+          failure instanceof ApiRequestError &&
+          [401, 403, 404].includes(failure.status)
+        ) {
+          setEvents([]);
+          setSelectedId('');
+          setLinkedEvent(null);
+          setUpdatedAt('');
+        }
+        setError(message(failure));
+      }
     } finally {
       if (request === requestNumber.current) setLoading(false);
     }
@@ -390,15 +439,16 @@ export function EventWorkspace({
           className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive"
         >
           {error}
+          {updatedAt ? ' The last view may be out of date.' : ''}
         </p>
       )}
       {notice && (
-        <p
-          role="status"
+        <SuccessNotice
+          key={notice}
           className="rounded-xl bg-primary/10 p-3 text-sm text-primary"
         >
           {notice}
-        </p>
+        </SuccessNotice>
       )}
       {formOpen && (
         <Card>
@@ -529,7 +579,7 @@ export function EventWorkspace({
           Past
         </Button>
       </fieldset>
-      {compact && (
+      {(compact || updatedAt) && (
         <RecordRefreshStatus
           label="events"
           updatedAt={updatedAt}
@@ -537,26 +587,25 @@ export function EventWorkspace({
           onRefresh={() => void refresh()}
         />
       )}
-      {loading && (
-        <p role="status" className="text-sm text-muted-foreground">
-          Loading events…
-        </p>
-      )}
-      {!loading && events.length === 0 && !selected && !error && (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
-            <CalendarDays
-              size={36}
-              className="text-primary"
-              aria-hidden="true"
-            />
-            <h3 className="font-heading text-lg">No {scope} events</h3>
-            <p className="text-sm text-muted-foreground">
-              Create an event to collect attendance from your household.
-            </p>
-          </CardContent>
-        </Card>
-      )}
+      {loading && !updatedAt && <WorkspaceLoading />}
+      {(!loading || updatedAt) &&
+        events.length === 0 &&
+        !selected &&
+        !error && (
+          <Card>
+            <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
+              <CalendarDays
+                size={36}
+                className="text-primary"
+                aria-hidden="true"
+              />
+              <h3 className="font-heading text-lg">No {scope} events</h3>
+              <p className="text-sm text-muted-foreground">
+                Create an event to collect attendance from your household.
+              </p>
+            </CardContent>
+          </Card>
+        )}
       {(events.length > 0 || selected) && (
         <div
           className={`grid gap-4 ${(selected && events.length > 0) || !compact ? 'lg:grid-cols-[minmax(0,1fr)_minmax(300px,1fr)]' : ''}`}

@@ -2,6 +2,7 @@
 
 import { ClipboardList, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { SuccessNotice } from '@/components/success-notice';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -351,9 +352,9 @@ export function ChoreWorkspace({
         </p>
       )}
       {notice && (
-        <p className="form-message success" role="status">
+        <SuccessNotice key={notice} className="form-message success">
           {notice}
-        </p>
+        </SuccessNotice>
       )}
       {formOpen && (
         <Card>
