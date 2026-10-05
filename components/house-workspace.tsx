@@ -2,6 +2,7 @@
 
 import { Plus } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import type { Household } from '@/lib/api';
@@ -12,28 +13,28 @@ const AnnouncementWorkspace = dynamic(
     import('./announcement-workspace').then(
       (module) => module.AnnouncementWorkspace,
     ),
-  { loading: WorkspaceLoading },
+  { loading: () => <WorkspaceLoading /> },
 );
 const ChoreWorkspace = dynamic(
   () => import('./chore-workspace').then((module) => module.ChoreWorkspace),
-  { loading: WorkspaceLoading },
+  { loading: () => <WorkspaceLoading /> },
 );
 const EventWorkspace = dynamic(
   () => import('./event-workspace').then((module) => module.EventWorkspace),
-  { loading: WorkspaceLoading },
+  { loading: () => <WorkspaceLoading /> },
 );
 const MealWorkspace = dynamic(
   () => import('./meal-workspace').then((module) => module.MealWorkspace),
-  { loading: WorkspaceLoading },
+  { loading: () => <WorkspaceLoading /> },
 );
 const PollWorkspace = dynamic(
   () => import('./poll-workspace').then((module) => module.PollWorkspace),
-  { loading: WorkspaceLoading },
+  { loading: () => <WorkspaceLoading /> },
 );
 const ShoppingWorkspace = dynamic(
   () =>
     import('./shopping-workspace').then((module) => module.ShoppingWorkspace),
-  { loading: WorkspaceLoading },
+  { loading: () => <WorkspaceLoading /> },
 );
 
 type HouseView =
@@ -43,8 +44,12 @@ type HouseView =
   | 'events'
   | 'announcements'
   | 'polls';
-function routeState(): { view: HouseView; focusId: string; add: boolean } {
-  const params = new URLSearchParams(window.location.search);
+function routeState(query: string): {
+  view: HouseView;
+  focusId: string;
+  add: boolean;
+} {
+  const params = new URLSearchParams(query);
   const view = params.get('view');
   if (view === 'announcements' || params.has('announcement'))
     return {
@@ -100,9 +105,10 @@ export function HouseWorkspace({
     id: number;
   } | null>(null);
   const createNumber = useRef(0);
+  const routeQuery = useSearchParams().toString();
   useEffect(() => {
     const syncRoute = () => {
-      const next = routeState();
+      const next = routeState(routeQuery);
       setView(next.view);
       setFocusId(next.focusId);
       if (next.focusId) setFocusSignal((current) => current + 1);
@@ -111,9 +117,7 @@ export function HouseWorkspace({
       );
     };
     syncRoute();
-    window.addEventListener('popstate', syncRoute);
-    return () => window.removeEventListener('popstate', syncRoute);
-  }, []);
+  }, [routeQuery]);
 
   function select(next: 'announcements' | 'events') {
     setView(next);

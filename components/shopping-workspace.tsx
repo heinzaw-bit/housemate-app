@@ -3,6 +3,7 @@
 import { Check, Pencil, RefreshCw, ShoppingBasket, X } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SuccessNotice } from '@/components/success-notice';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -518,9 +519,9 @@ export function ShoppingWorkspace({
         </p>
       )}
       {notice && (
-        <p role="status" className="form-message">
+        <SuccessNotice key={notice} className="form-message">
           {notice}
-        </p>
+        </SuccessNotice>
       )}
       {formOpen && (
         <Card>

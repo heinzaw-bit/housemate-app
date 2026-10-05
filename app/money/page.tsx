@@ -1,7 +1,6 @@
-import { AppView } from '@/components/app-view';
-
 export const metadata = { title: 'Money — HouseMate' };
 
 export default function MoneyPage() {
-  return <AppView section="money" />;
+  // The persistent root shell owns the authenticated view.
+  return null;
 }

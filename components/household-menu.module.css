@@ -234,3 +234,44 @@
     padding-bottom: max(24px, env(safe-area-inset-bottom));
   }
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  .backdrop {
+    transition: opacity 180ms ease;
+  }
+  .menu,
+  .join {
+    transition:
+      opacity 180ms ease,
+      translate 180ms ease;
+  }
+  .sheet {
+    transition:
+      opacity 180ms ease,
+      translate 180ms ease;
+  }
+  .backdrop[data-starting-style],
+  .backdrop[data-ending-style] {
+    opacity: 0;
+  }
+  .menu[data-starting-style],
+  .menu[data-ending-style],
+  .join[data-starting-style],
+  .join[data-ending-style] {
+    opacity: 0;
+    translate: 0 6px;
+  }
+  .sheet[data-starting-style],
+  .sheet[data-ending-style] {
+    opacity: 0;
+    translate: 0 24px;
+  }
+  .trigger {
+    transition:
+      background-color 150ms,
+      transform 150ms;
+  }
+  .trigger:enabled:active {
+    transform: scale(0.98);
+  }
+}

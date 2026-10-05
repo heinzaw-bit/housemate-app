@@ -3,10 +3,13 @@
 import { ArrowRight, Plus, ReceiptText } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { FinancialHistory } from '@/components/financial-history';
+import { ReadStatus } from '@/components/read-status';
+import { SuccessNotice } from '@/components/success-notice';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { VoidConfirmation } from '@/components/void-confirmation';
+import { WorkspaceLoading } from '@/components/workspace-loading';
 import {
   ApiRequestError,
   createExpense,
@@ -31,6 +34,7 @@ import { formatRecordDate as readableDate } from '@/lib/date-format';
 import { suggestedEventParticipants } from '@/lib/event-expense';
 import { confirmationFailure } from '@/lib/financial-confirmation';
 import { useLeaveGuard } from '@/lib/pending-work';
+import { householdReadPath, recentRead } from '@/lib/recent-reads';
 import { appendRecords } from '@/lib/record-pages';
 import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
@@ -94,13 +98,29 @@ export function ExpenseWorkspace({
   initialEventId?: string;
   onMoneyChanged: () => void;
 }) {
-  const [members, setMembers] = useState<HouseholdMember[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [members, setMembers] = useState<HouseholdMember[]>(
+    () =>
+      recentRead<{ members: HouseholdMember[] }>(
+        token,
+        householdReadPath(household.id, 'members'),
+      )?.value.members ?? [],
+  );
+  const [expenses, setExpenses] = useState<Expense[]>(
+    () =>
+      recentRead<{ expenses: Expense[] }>(
+        token,
+        householdReadPath(household.id, 'expenses?limit=50&offset=0'),
+      )?.value.expenses ?? [],
+  );
   const [selected, setSelected] = useState<Expense | null>(null);
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [detailsExpanded, setDetailsExpanded] = useState(true);
   const historyPanelId = useId();
   const detailsPanelId = useId();
+  const readPath = householdReadPath(
+    household.id,
+    'expenses?limit=50&offset=0',
+  );
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -183,6 +203,14 @@ export function ExpenseWorkspace({
         );
       }
     } catch (error) {
+      if (
+        error instanceof ApiRequestError &&
+        [401, 403, 404].includes(error.status)
+      ) {
+        setExpenses([]);
+        setMembers([]);
+        setSelected(null);
+      }
       setLoadError(
         error instanceof Error ? error.message : 'Could not load expenses.',
       );
@@ -500,12 +528,12 @@ export function ExpenseWorkspace({
         </Button>
       </div>
       {notice && (
-        <p
-          role="status"
+        <SuccessNotice
+          key={notice}
           className="rounded-xl bg-primary/10 px-4 py-3 text-sm text-primary"
         >
           {notice}
-        </p>
+        </SuccessNotice>
       )}
       {formOpen && (!loading || !initialEventId) && (
         <Card>
@@ -760,10 +788,14 @@ export function ExpenseWorkspace({
           </CardContent>
         </Card>
       )}
-      {loading && (
-        <p role="status" className="text-sm text-muted-foreground">
-          Loading expenses…
-        </p>
+      <ReadStatus
+        token={token}
+        path={readPath}
+        refreshing={loading}
+        error={loadError}
+      />
+      {loading && !recentRead(token, readPath) && (
+        <WorkspaceLoading kind="records" />
       )}
       {loadError && (
         <div
@@ -807,7 +839,11 @@ export function ExpenseWorkspace({
                 )}
               </div>
             </CardHeader>
-            <CardContent id={historyPanelId} className="space-y-2">
+            <CardContent
+              id={historyPanelId}
+              data-motion-expanded={historyExpanded}
+              className="space-y-2"
+            >
               {expenses
                 .slice(0, historyExpanded ? undefined : 3)
                 .map((expense) => (

@@ -1,7 +1,8 @@
 'use client';
 
 import { AlertCircle, ArrowRight, LoaderCircle, RefreshCw } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import {
   AccountSwitchBlockedError,
   switchGoogleAccount,
@@ -18,6 +19,7 @@ import { useAuth } from '@/lib/auth-context';
 import { describeAuthFailure } from '@/lib/auth-errors';
 import { pendingInviteKey } from '@/lib/invites';
 import { hasPendingWork } from '@/lib/pending-work';
+import { clearRecentReads } from '@/lib/recent-reads';
 import { disableBrowserPush } from '@/lib/web-push';
 import { AuthScreen } from './auth-screen';
 import { Brand } from './brand';
@@ -55,10 +57,32 @@ function AccountView({ section }: { section: Section }) {
   const [switchingAccount, setSwitchingAccount] = useState(false);
   const [accountError, setAccountError] = useState('');
   const token = session?.access_token;
+  const routeParams = useSearchParams();
+  const routeHousehold = routeParams.get('household');
+  const routeInvite = routeParams.get('invite');
+  const priorHousehold = useRef<string | null | undefined>(undefined);
+  const locallySelected = useRef<string | null>(null);
 
   useEffect(() => {
+    // The initial Home URL may omit the household selector. Remember the
+    // authorized selection so adding that same selector does not reload it.
+    if (!data) return;
+    const current =
+      data.households.find((household) => household.id === selectedId) ??
+      data.households[0];
+    if (current) locallySelected.current = current.id;
+  }, [data, selectedId]);
+
+  useEffect(() => {
+    if (
+      priorHousehold.current !== routeHousehold &&
+      routeHousehold !== locallySelected.current
+    ) {
+      clearRecentReads();
+    }
+    priorHousehold.current = routeHousehold;
     const url = new URL(window.location.href);
-    const invite = url.searchParams.get('invite');
+    const invite = routeInvite;
     if (invite) {
       const boundedInvite = invite.slice(0, 128);
       window.localStorage.setItem(pendingInviteKey, boundedInvite);
@@ -72,13 +96,15 @@ function AccountView({ section }: { section: Section }) {
     } else {
       setPendingInvite(window.localStorage.getItem(pendingInviteKey));
     }
-    const householdId = url.searchParams.get('household');
-    setRequestedId(householdId);
+    const householdId = routeHousehold;
+    setRequestedId(
+      householdId === locallySelected.current ? null : householdId,
+    );
     setSelectedId(
       householdId ?? window.localStorage.getItem('housemate.selectedHousehold'),
     );
     setRouteReady(true);
-  }, []);
+  }, [routeHousehold, routeInvite]);
 
   useEffect(() => {
     if (!token || !routeReady) {
@@ -117,6 +143,8 @@ function AccountView({ section }: { section: Section }) {
   }, [token, retryKey, routeReady, requestedId]);
 
   function selectHousehold(id: string) {
+    locallySelected.current = id;
+    clearRecentReads();
     setSelectedId(id);
     setRequestedId(null);
     window.localStorage.setItem('housemate.selectedHousehold', id);
@@ -303,7 +331,10 @@ function AccountView({ section }: { section: Section }) {
     );
   }
 
-  if (!data)
+  const displayedHousehold =
+    data?.households.find((household) => household.id === selectedId) ??
+    data?.households[0];
+  if (!data || (routeHousehold && displayedHousehold?.id !== routeHousehold))
     return (
       <div className="full-loading">
         <Brand />

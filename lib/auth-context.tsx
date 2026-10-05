@@ -13,6 +13,7 @@ import {
   useState,
 } from 'react';
 import { describeAuthFailure, readAuthRedirectError } from './auth-errors';
+import { clearRecentReads } from './recent-reads';
 import { syncDraftAccount } from './saved-drafts';
 
 interface AuthState {
@@ -43,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    clearRecentReads();
     const redirectError = readAuthRedirectError(window.location.href);
     if (redirectError) {
       window.history.replaceState(null, '', redirectError.cleanedUrl);
@@ -113,6 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = client.auth.onAuthStateChange((event, session) => {
+      if (active) clearRecentReads();
       if (active) syncDraftAccount(session?.user.id ?? null);
       if (event !== 'INITIAL_SESSION') sawAuthChange = true;
       if (active)

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { SuccessNotice } from '@/components/success-notice';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -542,11 +543,16 @@ export function MemberSettings({
                 </div>
               </dl>
             )}
-            {profileMessage && (
-              <p className="form-message" role="status">
-                {profileMessage}
-              </p>
-            )}
+            {profileMessage &&
+              (profileMessage === 'Profile saved.' ? (
+                <SuccessNotice key={profileMessage}>
+                  {profileMessage}
+                </SuccessNotice>
+              ) : (
+                <p className="form-message" role="status">
+                  {profileMessage}
+                </p>
+              ))}
             <details className={styles.accountDetails}>
               <summary>
                 Account details <ChevronDown size={16} aria-hidden="true" />
@@ -731,11 +737,16 @@ export function MemberSettings({
                 </div>
               </dl>
             )}
-            {settingsMessage && (
-              <p className="form-message" role="status">
-                {settingsMessage}
-              </p>
-            )}
+            {settingsMessage &&
+              (settingsMessage === 'Household settings saved.' ? (
+                <SuccessNotice key={settingsMessage}>
+                  {settingsMessage}
+                </SuccessNotice>
+              ) : (
+                <p className="form-message" role="status">
+                  {settingsMessage}
+                </p>
+              ))}
           </Card>
           <Card className={styles.card}>
             <div className={styles.cardHeading}>

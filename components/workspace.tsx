@@ -38,24 +38,24 @@ import { WorkspaceLoading } from './workspace-loading';
 
 const HomeDashboard = dynamic(
   () => import('./home-dashboard').then((module) => module.HomeDashboard),
-  { loading: WorkspaceLoading },
+  { loading: () => <WorkspaceLoading kind="home" /> },
 );
 const AssistantWorkspace = dynamic(
   () =>
     import('./assistant-workspace').then((module) => module.AssistantWorkspace),
-  { loading: WorkspaceLoading },
+  { loading: () => <WorkspaceLoading kind="assistant" /> },
 );
 const HouseWorkspace = dynamic(
   () => import('./house-workspace').then((module) => module.HouseWorkspace),
-  { loading: WorkspaceLoading },
+  { loading: () => <WorkspaceLoading /> },
 );
 const MemberSettings = dynamic(
   () => import('./member-settings').then((module) => module.MemberSettings),
-  { loading: WorkspaceLoading },
+  { loading: () => <WorkspaceLoading kind="profile" /> },
 );
 const MoneyWorkspace = dynamic(
   () => import('./money-workspace').then((module) => module.MoneyWorkspace),
-  { loading: WorkspaceLoading },
+  { loading: () => <WorkspaceLoading kind="money" /> },
 );
 
 import { NotificationBell } from './notification-bell';
@@ -65,7 +65,7 @@ const NotificationWorkspace = dynamic(
     import('./notification-workspace').then(
       (module) => module.NotificationWorkspace,
     ),
-  { loading: WorkspaceLoading },
+  { loading: () => <WorkspaceLoading /> },
 );
 
 export type Section =
@@ -295,90 +295,92 @@ function ScopedWorkspace({
           />
         </div>
         <main id="workspace-content" tabIndex={-1} className="page-content">
-          {section === 'notifications' && token && !preview && (
-            <NotificationWorkspace
-              key={household.id}
-              token={token}
-              household={household}
-              accountId={me.id}
-            />
-          )}
-          {section === 'home' && (
-            <HomeSection
-              key={household.id}
-              token={preview ? undefined : token}
-              firstName={firstName}
-              household={household}
-              moneyHref={hrefFor('/money')}
-              houseHref={hrefFor('/house')}
-            />
-          )}
-          {section === 'money' &&
-            (preview || !token ? (
-              <MoneySection />
-            ) : (
-              <MoneyWorkspace
+          <div className="motion-section" key={section}>
+            {section === 'notifications' && token && !preview && (
+              <NotificationWorkspace
                 key={household.id}
-                household={household}
                 token={token}
+                household={household}
+                accountId={me.id}
               />
-            ))}
-          {section === 'house' &&
-            (preview || !token ? (
-              <HouseSection household={household} />
-            ) : (
-              <HouseWorkspace
+            )}
+            {section === 'home' && (
+              <HomeSection
                 key={household.id}
+                token={preview ? undefined : token}
+                firstName={firstName}
                 household={household}
-                token={token}
+                moneyHref={hrefFor('/money')}
+                houseHref={hrefFor('/house')}
               />
-            ))}
-          {section === 'assistant' &&
-            (preview || !token ? (
-              <AssistantSection />
-            ) : (
-              <AssistantWorkspace
-                key={household.id}
-                household={household}
-                token={token}
-              />
-            ))}
-          {section === 'profile' &&
-            !preview &&
-            token &&
-            onMeUpdated &&
-            onHouseholdUpdated && (
+            )}
+            {section === 'money' &&
+              (preview || !token ? (
+                <MoneySection />
+              ) : (
+                <MoneyWorkspace
+                  key={household.id}
+                  household={household}
+                  token={token}
+                />
+              ))}
+            {section === 'house' &&
+              (preview || !token ? (
+                <HouseSection household={household} />
+              ) : (
+                <HouseWorkspace
+                  key={household.id}
+                  household={household}
+                  token={token}
+                />
+              ))}
+            {section === 'assistant' &&
+              (preview || !token ? (
+                <AssistantSection />
+              ) : (
+                <AssistantWorkspace
+                  key={household.id}
+                  household={household}
+                  token={token}
+                />
+              ))}
+            {section === 'profile' &&
+              !preview &&
+              token &&
+              onMeUpdated &&
+              onHouseholdUpdated && (
+                <MemberSettings
+                  key={household.id}
+                  settingsRequest={profileSettingsRequest}
+                  me={me}
+                  household={household}
+                  token={token}
+                  onMeUpdated={onMeUpdated}
+                  onHouseholdUpdated={onHouseholdUpdated}
+                  onSwitchAccount={onSwitchAccount}
+                  switchingAccount={switchingAccount}
+                  accountError={accountError}
+                  onSignOut={onSignOut}
+                  signingOut={signingOut}
+                  signOutError={signOutError}
+                />
+              )}
+            {section === 'profile' && (preview || !token) && (
               <MemberSettings
                 key={household.id}
+                token=""
                 settingsRequest={profileSettingsRequest}
+                onMeUpdated={() => {}}
+                onHouseholdUpdated={() => {}}
                 me={me}
                 household={household}
-                token={token}
-                onMeUpdated={onMeUpdated}
-                onHouseholdUpdated={onHouseholdUpdated}
-                onSwitchAccount={onSwitchAccount}
-                switchingAccount={switchingAccount}
-                accountError={accountError}
                 onSignOut={onSignOut}
                 signingOut={signingOut}
                 signOutError={signOutError}
+                preview={preview || !token}
               />
             )}
-          {section === 'profile' && (preview || !token) && (
-            <MemberSettings
-              key={household.id}
-              token=""
-              settingsRequest={profileSettingsRequest}
-              onMeUpdated={() => {}}
-              onHouseholdUpdated={() => {}}
-              me={me}
-              household={household}
-              onSignOut={onSignOut}
-              signingOut={signingOut}
-              signOutError={signOutError}
-              preview={preview || !token}
-            />
-          )}
+          </div>
         </main>
       </div>
 

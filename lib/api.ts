@@ -1,3 +1,5 @@
+import { clearRecentReads, readGeneration, rememberRead } from './recent-reads';
+
 export const searchTypes = [
   'expense',
   'bill',
@@ -570,10 +572,11 @@ async function request<T>(
   token: string,
   init?: RequestInit,
 ): Promise<T> {
-  // Share only simultaneous reads. No response or credentials remain cached afterward.
+  // API calls always read the server; coalesce only simultaneous reads.
+  // Successful eligible reads may separately seed short-lived UI snapshots.
   if ((init?.method ?? 'GET') !== 'GET' || init?.signal)
     return requestOnce<T>(path, token, init);
-  const key = `${token}:${path}`;
+  const key = `${readGeneration()}:${token}:${path}`;
   const pending = pendingReads.get(key);
   if (pending) return pending as Promise<T>;
   const task = requestOnce<T>(path, token, init);
@@ -596,6 +599,7 @@ async function requestOnce<T>(
       'OFFLINE',
       'You are offline. Reconnect and try again; this request was not sent.',
     );
+  const version = readGeneration();
   const controller = new AbortController();
   const abort = () => controller.abort();
   init?.signal?.addEventListener('abort', abort, { once: true });
@@ -630,6 +634,8 @@ async function requestOnce<T>(
         body?.statusCode === 404 &&
         typeof body?.message === 'string' &&
         /^Route [A-Z]+:.* not found$/.test(body.message);
+      if ([401, 403, 404].includes(response.status) && !routeMissing)
+        clearRecentReads();
       throw new ApiRequestError(
         response.status,
         routeMissing
@@ -650,6 +656,13 @@ async function requestOnce<T>(
         'INVALID_RESPONSE',
         'HouseMate could not verify the server reply. Keep your review open and retry.',
       );
+    const method = init?.method ?? 'GET';
+    if (method === 'GET') rememberRead(token, path, body, version);
+    else if (
+      !path.includes('/assistant/') &&
+      !/\/(preview|edit-preview|void-preview)$/.test(path)
+    )
+      clearRecentReads();
     return body as T;
   } finally {
     clearTimeout(timeout);

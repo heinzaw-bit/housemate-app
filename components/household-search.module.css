@@ -288,3 +288,29 @@
     animation: none;
   }
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  .backdrop {
+    transition: opacity 180ms ease;
+  }
+  .popup {
+    transition:
+      opacity 180ms ease,
+      translate 180ms ease;
+  }
+  .backdrop[data-starting-style],
+  .backdrop[data-ending-style] {
+    opacity: 0;
+  }
+  .popup[data-starting-style],
+  .popup[data-ending-style] {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+@media (max-width: 600px) and (prefers-reduced-motion: no-preference) {
+  .popup[data-starting-style],
+  .popup[data-ending-style] {
+    translate: 0 24px;
+  }
+}

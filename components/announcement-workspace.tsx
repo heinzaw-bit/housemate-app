@@ -53,6 +53,7 @@ export function AnnouncementWorkspace({
     token,
     householdId: household.id,
     scope,
+    cacheResource: 'announcements',
     loadPage: getAnnouncements,
     getRecord: getAnnouncement,
     focusedId,

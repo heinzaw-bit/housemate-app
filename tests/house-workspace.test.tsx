@@ -12,6 +12,10 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { HouseWorkspace } from '../components/house-workspace';
 import * as api from '../lib/api';
 
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(window.location.search),
+}));
+
 vi.mock('../lib/api', async (original) => ({
   ...(await original<typeof import('../lib/api')>()),
   getMembers: vi.fn(),

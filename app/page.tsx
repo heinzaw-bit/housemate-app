@@ -1,4 +1,3 @@
-import { HomeEntry } from '@/components/home-entry';
 import { LandingPage } from '@/components/landing-page';
 import './landing.css';
 
@@ -14,9 +13,5 @@ export const metadata = {
 };
 
 export default function HomePage() {
-  return (
-    <HomeEntry>
-      <LandingPage />
-    </HomeEntry>
-  );
+  return <LandingPage />;
 }

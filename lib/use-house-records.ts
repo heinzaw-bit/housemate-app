@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiRequestError } from './api';
+import { householdReadPath, recentRead } from './recent-reads';
 
 export function useHouseRecords<T extends { id: string }, S extends string>({
   token,
   householdId,
   scope,
+  cacheResource,
   loadPage,
   getRecord,
   focusedId,
@@ -15,6 +17,7 @@ export function useHouseRecords<T extends { id: string }, S extends string>({
   token: string;
   householdId: string;
   scope: S;
+  cacheResource?: 'announcements';
   loadPage: (
     token: string,
     householdId: string,
@@ -26,14 +29,28 @@ export function useHouseRecords<T extends { id: string }, S extends string>({
   focusedId: string;
   focusSignal: number;
 }) {
-  const [records, setRecords] = useState<T[]>([]);
+  const readPath = cacheResource
+    ? householdReadPath(
+        householdId,
+        `${cacheResource}?scope=${scope}&limit=50&offset=0`,
+      )
+    : '';
+  const [records, setRecords] = useState<T[]>(
+    () =>
+      recentRead<Record<string, T[]>>(token, readPath)?.value[
+        cacheResource ?? ''
+      ] ?? [],
+  );
   const [selected, setSelected] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState('');
-  const [updatedAt, setUpdatedAt] = useState('');
+  const [updatedAt, setUpdatedAt] = useState(() => {
+    const read = recentRead(token, readPath);
+    return read ? new Date(read.readAt).toISOString() : '';
+  });
   const selectedRef = useRef<T | null>(null);
   const pageRequest = useRef(0);
   const detailRequest = useRef(0);
@@ -142,6 +159,10 @@ export function useHouseRecords<T extends { id: string }, S extends string>({
 
   useEffect(() => {
     loadedPages.current = 1;
+    const snapshot = recentRead<Record<string, T[]>>(token, readPath);
+    setRecords(snapshot?.value[cacheResource ?? ''] ?? []);
+    setUpdatedAt(snapshot ? new Date(snapshot.readAt).toISOString() : '');
+    close();
     void refresh();
     const onReturn = () => {
       if (document.visibilityState === 'visible' && navigator.onLine)
@@ -158,7 +179,7 @@ export function useHouseRecords<T extends { id: string }, S extends string>({
       document.removeEventListener('visibilitychange', onReturn);
       window.clearInterval(timer);
     };
-  }, [refresh]);
+  }, [refresh, readPath, cacheResource, token, close]);
   useEffect(() => {
     if (focusedId && focusSignal) void open(focusedId);
     return () => {

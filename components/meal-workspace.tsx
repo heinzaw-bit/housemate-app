@@ -7,6 +7,7 @@ import {
   UtensilsCrossed,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { SuccessNotice } from '@/components/success-notice';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -388,9 +389,9 @@ export function MealWorkspace({
         </p>
       )}
       {notice && (
-        <p className="form-message" role="status">
+        <SuccessNotice key={notice} className="form-message">
           {notice}
-        </p>
+        </SuccessNotice>
       )}
       {showForm && (
         <Card>

@@ -1,6 +1,7 @@
 'use client';
 import { Bell, ChevronDown, Moon, RefreshCw, Smartphone } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SuccessNotice } from '@/components/success-notice';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -439,9 +440,9 @@ function NotificationSettings({
       className="notification-settings"
     >
       {notice && (
-        <p role="status" className="notification-notice">
+        <SuccessNotice key={notice} className="notification-notice">
           {notice}
-        </p>
+        </SuccessNotice>
       )}
       <section
         className="notification-settings-section"

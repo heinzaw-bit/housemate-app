@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
-import type { ReactNode } from 'react';
+import { type ReactNode, Suspense } from 'react';
+import { AppShell } from '@/components/app-shell';
 import { AppStatus } from '@/components/app-status';
+import { EntryLoading } from '@/components/home-entry';
 import { ServiceWorkerRegister } from '@/components/service-worker-register';
 import { AuthProvider } from '@/lib/auth-context';
 import { themeInitScript } from '@/lib/theme';
@@ -48,7 +50,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <ThemeProvider>
           <AuthProvider>
             <AppStatus />
-            {children}
+            <Suspense fallback={<EntryLoading />}>
+              <AppShell>{children}</AppShell>
+            </Suspense>
           </AuthProvider>
         </ThemeProvider>
         <ServiceWorkerRegister />

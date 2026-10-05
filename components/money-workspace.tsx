@@ -1,9 +1,12 @@
 'use client';
+
 import dynamic from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { ReadStatus } from '@/components/read-status';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { WorkspaceLoading } from '@/components/workspace-loading';
 import {
   ApiRequestError,
   type BalanceSummary,
@@ -12,20 +15,20 @@ import {
   type Household,
 } from '@/lib/api';
 import { moneyHref } from '@/lib/dashboard';
+import { householdReadPath, recentRead } from '@/lib/recent-reads';
 import { useRefreshOnReturn } from '@/lib/use-refresh-on-return';
-import { WorkspaceLoading } from './workspace-loading';
 
 const BalanceWorkspace = dynamic(
   () => import('./balance-workspace').then((module) => module.BalanceWorkspace),
-  { loading: WorkspaceLoading },
+  { loading: () => <WorkspaceLoading kind="money" /> },
 );
 const BillWorkspace = dynamic(
   () => import('./bill-workspace').then((module) => module.BillWorkspace),
-  { loading: WorkspaceLoading },
+  { loading: () => <WorkspaceLoading /> },
 );
 const ExpenseWorkspace = dynamic(
   () => import('./expense-workspace').then((module) => module.ExpenseWorkspace),
-  { loading: WorkspaceLoading },
+  { loading: () => <WorkspaceLoading /> },
 );
 
 export function MoneyWorkspace({
@@ -62,7 +65,10 @@ function MoneyContent({
     view === 'expenses' && startCreate
       ? (params.get('event') ?? undefined)
       : undefined;
-  const [summary, setSummary] = useState<BalanceSummary | null>(null);
+  const readPath = householdReadPath(household.id, 'balances');
+  const [summary, setSummary] = useState<BalanceSummary | null>(
+    () => recentRead<BalanceSummary>(token, readPath)?.value ?? null,
+  );
   const [summaryError, setSummaryError] = useState('');
   const [summaryLoading, setSummaryLoading] = useState(true);
   const requestNumber = useRef(0);
@@ -114,6 +120,12 @@ function MoneyContent({
             <p>See balances, review records, and add household costs.</p>
           </div>
         </div>
+        <ReadStatus
+          token={token}
+          path={readPath}
+          refreshing={summaryLoading}
+          error={summaryError}
+        />
         {summaryError && (
           <p role="alert" className="text-sm text-destructive">
             {summaryError} {summary ? 'These totals may be out of date.' : ''}{' '}

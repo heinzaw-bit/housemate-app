@@ -2,7 +2,7 @@
 
 import { Bell, X } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { NotificationItem } from '@/lib/api';
 
 function Popup({
@@ -12,6 +12,25 @@ function Popup({
   item: NotificationItem;
   dismiss: (id: string) => void;
 }) {
+  const [leaving, setLeaving] = useState(false);
+  const closing = useRef(false);
+  const exitTimer = useRef<number | null>(null);
+  const close = useCallback(() => {
+    if (closing.current) return;
+    closing.current = true;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      dismiss(item.id);
+      return;
+    }
+    setLeaving(true);
+    exitTimer.current = window.setTimeout(() => dismiss(item.id), 160);
+  }, [dismiss, item.id]);
+  useEffect(
+    () => () => {
+      if (exitTimer.current !== null) window.clearTimeout(exitTimer.current);
+    },
+    [],
+  );
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const [visible, setVisible] = useState(
@@ -25,12 +44,15 @@ function Popup({
   }, []);
   useEffect(() => {
     if (hovered || focused || !visible) return;
-    const timer = window.setTimeout(() => dismiss(item.id), 8_000);
+    const timer = window.setTimeout(close, 8_000);
     return () => clearTimeout(timer);
-  }, [item.id, dismiss, hovered, focused, visible]);
+  }, [close, hovered, focused, visible]);
   return (
     <article
       className="notification-popup"
+      data-leaving={leaving ? '' : undefined}
+      aria-hidden={leaving || undefined}
+      inert={leaving}
       aria-label={item.title}
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
@@ -48,7 +70,7 @@ function Popup({
           href={item.href}
           prefetch={false}
           className="notification-popup-view"
-          onClick={() => dismiss(item.id)}
+          onClick={close}
           aria-label={`View ${item.body || item.title}`}
         >
           View
@@ -58,7 +80,7 @@ function Popup({
         type="button"
         className="notification-popup-dismiss"
         aria-label={`Dismiss ${item.title}`}
-        onClick={() => dismiss(item.id)}
+        onClick={close}
       >
         <X size={18} aria-hidden="true" />
       </button>
