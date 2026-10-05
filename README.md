@@ -6,7 +6,10 @@ Independent Next.js web client for HouseMate, published as [heinzaw-bit/housemat
 
 Header controls use matching 44px touch targets, outline icons, accessible
 labels and theme-aware colors. Notifications and Theme are plain icons; Account
-and Search retain soft circular backgrounds. Search sits beside the page
+and Search retain soft circular backgrounds in browsers. In the installed phone
+app at widths up to 650px, Search uses a plain magnifying-glass icon to match
+Notifications and Theme, keeping its 44px touch area and keyboard focus outline.
+Search sits beside the page
 breadcrumb on desktop and beside the brand on phones. Search uses
 one focus outline around its input row. The account identity appears inside its
 menu. Phone headers keep safe-area side

@@ -3417,6 +3417,14 @@ input[type="radio"] {
     display: none;
   }
 }
+@media (display-mode: standalone) and (max-width: 650px) {
+  .header-icon-button.household-search-trigger {
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--foreground);
+  }
+}
 .account-menu-positioner {
   z-index: 60;
 }
