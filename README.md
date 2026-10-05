@@ -16,6 +16,12 @@ to keep every 44px control on one row, including with larger text settings.
 The mobile mascot uses a matching 44px tile and cannot shrink beside the header
 controls.
 
+Click or tap the workspace mascot to refresh the current page, keeping its URL
+and selected household. The mascot is a keyboard-accessible button on phones
+and in the desktop sidebar. Refresh is disabled while a draft or unsaved
+settings are open; finish or discard that work first. Other brand marks remain
+decorative.
+
 Signed-out visitors at `/` see a public landing page with feature highlights,
 setup steps, an interactive Home/Money/House tour, FAQ and a privacy overview.
 Six sections follow the natural page scroll, with header links to jump directly

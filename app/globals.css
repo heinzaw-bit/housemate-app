@@ -103,6 +103,13 @@ a {
   width: 84%;
   height: 84%;
 }
+.brand-refresh {
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
+  border: 0;
+  padding: 0;
+}
 .brand-dot {
   color: #e9b962;
 }
