@@ -21,12 +21,23 @@ import {
   type SearchHit,
   type SearchType,
   searchHousehold,
-  searchTypes,
 } from '@/lib/api';
 import { hasPendingWork, usePendingWork } from '@/lib/pending-work';
 import styles from './household-search.module.css';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+
+const currentSearchTypes: readonly SearchType[] = [
+  'expense',
+  'bill',
+  'settlement',
+  'event',
+  'announcement',
+];
+
+function currentResults(results: SearchHit[]) {
+  return results.filter((hit) => currentSearchTypes.includes(hit.type));
+}
 
 const labels: Record<SearchType, string> = {
   expense: 'Expenses',
@@ -221,7 +232,7 @@ export function HouseholdSearch({
           abort.signal,
         );
         if (current !== version.current || abort.signal.aborted) return;
-        setResults(page.results);
+        setResults(currentResults(page.results));
         setCursor(page.nextCursor);
         setSearched(true);
       } catch (cause) {
@@ -276,7 +287,7 @@ export function HouseholdSearch({
       if (current !== version.current || abort.signal.aborted) return;
       setResults((previous) => [
         ...new Map(
-          [...previous, ...page.results].map((hit) => [
+          [...previous, ...currentResults(page.results)].map((hit) => [
             `${hit.type}:${hit.id}`,
             hit,
           ]),
@@ -386,27 +397,11 @@ export function HouseholdSearch({
                 }
               >
                 <option value="all">All records</option>
-                {searchTypes
-                  .filter(
-                    (kind) =>
-                      !['meal', 'chore', 'shopping', 'poll'].includes(kind),
-                  )
-                  .map((kind) => (
-                    <option key={kind} value={kind}>
-                      {labels[kind]}
-                    </option>
-                  ))}
-                <optgroup label="Earlier household tools">
-                  {searchTypes
-                    .filter((kind) =>
-                      ['meal', 'chore', 'shopping', 'poll'].includes(kind),
-                    )
-                    .map((kind) => (
-                      <option key={kind} value={kind}>
-                        {labels[kind]}
-                      </option>
-                    ))}
-                </optgroup>
+                {currentSearchTypes.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {labels[kind]}
+                  </option>
+                ))}
               </select>
               <p role="status" className={styles.status}>
                 {loading
@@ -455,7 +450,9 @@ export function HouseholdSearch({
                   )}
                   {searched && !loading && !error && results.length === 0 && (
                     <p className={styles.empty}>
-                      No matches. Try a shorter phrase or another record type.
+                      {cursor
+                        ? 'No matches on this page. Load more results or try another phrase.'
+                        : 'No matches. Try a shorter phrase or another record type.'}
                     </p>
                   )}
                   <ul
