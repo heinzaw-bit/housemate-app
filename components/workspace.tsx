@@ -177,7 +177,7 @@ function ScopedWorkspace({
       </a>
       <aside className="sidebar">
         <div className="sidebar-top">
-          <Brand />
+          <Brand refreshable />
         </div>
         <div className="sidebar-household-control">
           <HouseholdMenu
@@ -223,7 +223,7 @@ function ScopedWorkspace({
         <header className="topbar">
           <div className="topbar-context">
             <div className="mobile-brand">
-              <Brand />
+              <Brand refreshable />
             </div>
             <div className="topbar-location">
               <span className="topbar-breadcrumb">HOUSEMATE</span>

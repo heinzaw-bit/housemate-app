@@ -309,7 +309,7 @@ export function HouseholdSearch({
   return (
     <Dialog.Root open={open} onOpenChange={changeOpen}>
       <Dialog.Trigger
-        className="header-icon-button"
+        className="header-icon-button household-search-trigger"
         disabled={!available}
         aria-label="Search household records"
         title={
