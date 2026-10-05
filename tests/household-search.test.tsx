@@ -145,16 +145,67 @@ test('changed queries and whitespace ignore older late responses; filters restar
   await screen.findByText('October rent');
   await user.selectOptions(
     screen.getByRole('combobox', { name: 'Record type' }),
-    'meal',
+    'event',
   );
   await waitFor(() =>
     expect(vi.mocked(api.searchHousehold).mock.lastCall?.slice(0, 4)).toEqual([
       'token',
       'home',
       'dinner',
-      'meal',
+      'event',
     ]),
   );
+});
+
+test('search excludes earlier tools from filters and every result page without losing the next cursor', async () => {
+  const earlier: SearchHit[] = (
+    ['meal', 'chore', 'shopping', 'poll'] as const
+  ).map((type) => ({ ...hit, type, title: `Earlier ${type}` }));
+  const current: SearchHit[] = (
+    ['expense', 'bill', 'settlement', 'event', 'announcement'] as const
+  ).map((type) => ({ ...hit, type, title: `Current ${type}` }));
+  vi.mocked(api.searchHousehold)
+    .mockResolvedValueOnce({ results: earlier, nextCursor: 'cursor' })
+    .mockResolvedValueOnce({
+      results: [...earlier, ...current],
+      nextCursor: null,
+    });
+  const user = userEvent.setup();
+  render(<HouseholdSearch token="token" household={home} />);
+  await start(user);
+  expect(
+    screen.getAllByRole('option').map((option) => option.textContent),
+  ).toEqual([
+    'All records',
+    'Expenses',
+    'Bills',
+    'Transfers',
+    'Events',
+    'Announcements',
+  ]);
+  expect(
+    screen.queryByRole('group', { name: 'Earlier household tools' }),
+  ).toBeNull();
+  await screen.findByText(
+    'No matches on this page. Load more results or try another phrase.',
+  );
+  expect(screen.getByText('0 results · more available')).toBeTruthy();
+  expect(screen.queryAllByRole('link')).toHaveLength(0);
+  await user.click(screen.getByRole('button', { name: 'Load more results' }));
+  await screen.findByText('Current announcement');
+  expect(screen.getAllByRole('link')).toHaveLength(5);
+  expect(screen.queryByText(/^Earlier /)).toBeNull();
+  expect(screen.getByText('5 results')).toBeTruthy();
+  expect(vi.mocked(api.searchHousehold).mock.calls[1].slice(0, 5)).toEqual([
+    'token',
+    'home',
+    'rent',
+    'all',
+    'cursor',
+  ]);
+  expect(
+    screen.queryByRole('button', { name: 'Load more results' }),
+  ).toBeNull();
 });
 
 test('pagination uses the current cursor, removes overlap and keeps different record types with the same id', async () => {
