@@ -216,6 +216,9 @@ export interface PushDevice {
   createdAt: string;
   lastSentAt: string | null;
   lastError: string | null;
+  lastTestAt?: string | null;
+  lastTestStatus?: string | null;
+  lastTestAcceptedAt?: string | null;
 }
 export interface PushConfig {
   enabled: boolean;
@@ -295,6 +298,13 @@ export function registerPushDevice(
     method: 'POST',
     body: JSON.stringify(input),
   });
+}
+export function testPushDevice(token: string, householdId: string, id: string) {
+  return request<{ status: 'accepted'; acceptedAt: string }>(
+    `/v1/households/${encodeURIComponent(householdId)}/push-subscriptions/${encodeURIComponent(id)}/test`,
+    token,
+    { method: 'POST' },
+  );
 }
 export function disablePushDevice(token: string, id: string) {
   return request<void>(

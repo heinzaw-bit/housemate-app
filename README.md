@@ -161,3 +161,9 @@ Release prerequisite: apply the API action-create migration and deploy the compa
 It has no household data or database credentials. The separate API readiness
 check covers database availability. External monitors should use this route;
 the landing page can exceed monitoring providers' response-size limits.
+
+## Notification timing and device checks
+
+Bell/Inbox refresh from fresh authorized API records when push arrives, with a visible/online 15-second fallback. Native banners display before invalidation; tap links remain.
+
+Notifications → Settings → Test notification sends one immediate test to this device, including during quiet hours. Wait a minute between tests. Push-service acceptance does not confirm phone receipt. Use the iPhone Home Screen installation and check Focus/Scheduled Summary; check Android notification/battery restrictions for delays. Deploy the new API/migration before using tests.

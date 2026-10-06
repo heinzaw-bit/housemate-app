@@ -175,3 +175,9 @@ Interrupt each create response, retain the original locked review, and explicitl
 On Android Chrome and iPhone Safari, switch every main tab; the header/nav should stay steady and incoming content fade without delaying a tap. Press New/Ask/Confirm and verify subtle feedback, normal focus and immediate actions. Open Search/household selectors at desktop/phone widths and check fade/slide, keyboard focus, dismissal and safe areas. Expand/collapse Home activity, money histories/suggestions/sources/transfers and Assistant records: first rows and amounts stay stable, content fades, scrolling remains usable. Ask a question: thinking stays inside its box, the mascot greets once per visit and the answer appears outside.
 
 Verify success checks only after API-confirmed saves/acknowledgements/attendance; lost or failed confirmations must show uncertainty/error with no success check. Verify popup entry, auto-dismiss and manual dismissal: exiting content is immediately inert, no extra reads/writes occur, hover/focus/hidden pauses remain, and scope changes remove old popups. Enable OS Reduce motion: new entrance/press/greeting/list/check effects are absent and popup dismissal is immediate. Automated tests verify dismissal lifecycle, reduced-motion bypass, cleanup and existing financial state guards; CSS smoothness and real-device rendering/performance need phone acceptance.
+
+### Timely notification acceptance
+
+- Android Chrome/iPhone Home Screen: explicitly test the current device, verify banner and Settings tap; repeat inside one minute to verify cooldown. Provider acceptance is not phone receipt.
+- Another member publishes a targeted announcement: verify open-app bell/inbox update and repeat closed/locked, recording publish-to-banner delay. No hard arrival guarantee.
+- Check urgent/normal updates, quiet hours, Focus/summary, offline reconnection, removed membership and disabled devices. Expired reminders must not replay.

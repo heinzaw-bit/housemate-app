@@ -256,3 +256,40 @@ test('notification tap reports failure when the browser cannot open or recover a
     'Could not open the HouseMate notification.',
   );
 });
+
+test('service worker displays push before signaling live windows and sends no private content to clients', async () => {
+  const handlers = new Map<string, (event: unknown) => void>();
+  const postMessage = vi.fn();
+  const showNotification = vi.fn().mockResolvedValue(undefined);
+  const matchAll = vi
+    .fn()
+    .mockResolvedValue([{ url: 'https://housemate.example/', postMessage }]);
+  vm.runInNewContext(
+    readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8'),
+    {
+      URL,
+      self: {
+        location: { origin: 'https://housemate.example' },
+        registration: { showNotification },
+        clients: { matchAll },
+        addEventListener: (name: string, handler: (event: unknown) => void) =>
+          handlers.set(name, handler),
+      },
+    },
+  );
+  let completed = Promise.resolve();
+  handlers.get('push')?.({
+    data: { json: () => ({ id: 'safe-id', body: 'Private', test: true }) },
+    waitUntil: (task: Promise<void>) => {
+      completed = task;
+    },
+  });
+  await completed;
+  expect(showNotification.mock.calls[0][1].body).toContain(
+    'test notification arrived',
+  );
+  expect(postMessage).toHaveBeenCalledWith({ type: 'housemate.push.received' });
+  expect(showNotification.mock.invocationCallOrder[0]).toBeLessThan(
+    postMessage.mock.invocationCallOrder[0],
+  );
+});

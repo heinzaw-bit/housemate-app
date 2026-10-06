@@ -16,6 +16,7 @@ import {
   notificationTime,
   savePopupCheckpoint,
 } from '@/lib/notification-popups';
+import { listenForNotificationPush } from '@/lib/notification-refresh';
 import { NotificationPopups } from './notification-popups';
 
 export function NotificationBell({
@@ -129,7 +130,8 @@ export function NotificationBell({
         void refresh();
     };
     void refresh();
-    const timer = window.setInterval(onReturn, 30_000);
+    const timer = window.setInterval(onReturn, 15_000);
+    const stopPush = listenForNotificationPush(onReturn);
     window.addEventListener('focus', onReturn);
     window.addEventListener('online', onReturn);
     document.addEventListener('visibilitychange', onReturn);
@@ -137,6 +139,7 @@ export function NotificationBell({
     return () => {
       active = false;
       clearInterval(timer);
+      stopPush();
       window.removeEventListener('focus', onReturn);
       window.removeEventListener('online', onReturn);
       document.removeEventListener('visibilitychange', onReturn);

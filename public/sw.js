@@ -36,12 +36,18 @@ function safePushHref(value) {
 self.addEventListener('push', (event) => {
   let message = {};
   try { message = event.data?.json() ?? {}; } catch {}
-  event.waitUntil(self.registration.showNotification('HouseMate', {
-    body: 'You have a household update. Open HouseMate to see it.',
+  event.waitUntil((async () => {
+  await self.registration.showNotification('HouseMate', {
+    body: message.test === true ? 'Your test notification arrived. Tap to return to notification settings.' : 'You have a household update. Open HouseMate to see it.',
     tag: typeof message.id === 'string' ? `housemate-${message.id}` : 'housemate-update',
     renotify: false,
     data: { href: safePushHref(message.href) },
-  }));
+  });
+  const windows = await self.clients?.matchAll({ type: 'window', includeUncontrolled: true }) ?? [];
+  for (const client of windows) {
+    if (new URL(client.url).origin === self.location.origin) client.postMessage({ type: 'housemate.push.received' });
+  }
+  })());
 });
 async function openPushTarget(href) {
   // Let the browser route the tap to the installed app. Choosing an arbitrary

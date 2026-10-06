@@ -19,6 +19,7 @@ vi.mock('../lib/api', async (original) => ({
   getNotificationPreferences: vi.fn(),
   getPushConfig: vi.fn(),
   getPushDevices: vi.fn(),
+  testPushDevice: vi.fn(),
   saveNotificationPreferences: vi.fn(),
   readNotification: vi.fn(),
   readAllNotifications: vi.fn(),
@@ -289,4 +290,21 @@ test('expanded settings have accessible switches and no structural axe violation
     rules: { 'color-contrast': { enabled: false } },
   });
   expect(result.violations).toEqual([]);
+});
+
+test('device test is explicit, targets this device and reports provider acceptance without claiming phone receipt', async () => {
+  const send = vi.spyOn(api, 'testPushDevice').mockResolvedValue({
+    status: 'accepted',
+    acceptedAt: '2026-10-06T00:00:00Z',
+  });
+  await mount(true);
+  expect(send).not.toHaveBeenCalled();
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Test notification' }));
+  });
+  expect(send).toHaveBeenCalledWith('token', 'home', 'current');
+  expect(
+    screen.getByText(/Accepted by the push service. Look for/),
+  ).toBeTruthy();
+  expect(screen.getByText(/including during quiet hours/)).toBeTruthy();
 });

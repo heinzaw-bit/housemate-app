@@ -20,7 +20,9 @@ import {
   readAllNotifications,
   readNotification,
   saveNotificationPreferences,
+  testPushDevice,
 } from '@/lib/api';
+import { listenForNotificationPush } from '@/lib/notification-refresh';
 import { useLeaveGuard } from '@/lib/pending-work';
 import { appendRecords } from '@/lib/record-pages';
 import {
@@ -111,16 +113,20 @@ export function NotificationWorkspace({
       if (document.visibilityState === 'visible' && navigator.onLine)
         void refresh(true);
     };
-    const timer = setInterval(onReturn, 30_000);
+    const timer = setInterval(onReturn, 15_000);
+    const stopPush = listenForNotificationPush(onReturn);
     window.addEventListener('focus', onReturn);
     window.addEventListener('online', onReturn);
     document.addEventListener('visibilitychange', onReturn);
+    window.addEventListener('housemate.notifications.changed', onReturn);
     return () => {
       version.current++;
       clearInterval(timer);
+      stopPush();
       window.removeEventListener('focus', onReturn);
       window.removeEventListener('online', onReturn);
       document.removeEventListener('visibilitychange', onReturn);
+      window.removeEventListener('housemate.notifications.changed', onReturn);
     };
   }, [refresh]);
   useEffect(() => {
@@ -283,6 +289,7 @@ function NotificationSettings({
   const [saving, setSaving] = useState(false);
   const [working, setWorking] = useState(false);
   const [savedPreferences, setSavedPreferences] = useState('');
+  const [testStatus, setTestStatus] = useState('');
   const dirty =
     preferences !== null && JSON.stringify(preferences) !== savedPreferences;
   useLeaveGuard(saving || working || dirty);
@@ -408,6 +415,30 @@ function NotificationSettings({
       setWorking(false);
     }
   }
+  async function testDevice() {
+    if (working || !localId) return;
+    setWorking(true);
+    setTestStatus('Sending test…');
+    const version = request.current;
+    try {
+      await testPushDevice(token, household.id, localId);
+      if (version !== request.current) return;
+      setTestStatus(
+        'Accepted by the push service. Look for a HouseMate test notification on this phone.',
+      );
+      const next = await getPushDevices(token);
+      if (version === request.current) setDevices(next);
+    } catch (failure) {
+      if (version === request.current)
+        setTestStatus(
+          failure instanceof Error
+            ? failure.message
+            : 'The test could not be confirmed.',
+        );
+    } finally {
+      setWorking(false);
+    }
+  }
   const currentDevice = devices.find((device) => device.id === localId);
   const pushEnabled = !!currentDevice?.enabled && permission === 'granted';
   const pushKnown = config !== null && !pushError;
@@ -488,6 +519,46 @@ function NotificationSettings({
             </Button>
           )}
         </div>
+        {pushEnabled && pushKnown && (
+          <div className="notification-disclosure-content">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={working}
+              onClick={() => void testDevice()}
+            >
+              Test notification
+            </Button>
+            <p className="notification-help">
+              Sends one test now, including during quiet hours. Wait a minute
+              between tests.
+            </p>
+            {testStatus && (
+              <p role="status" className="notification-help">
+                {testStatus}
+              </p>
+            )}
+            {currentDevice?.lastTestStatus === 'accepted' &&
+              currentDevice.lastTestAcceptedAt &&
+              !testStatus && (
+                <p className="notification-help">
+                  Last test accepted by the push service:{' '}
+                  {new Date(
+                    currentDevice.lastTestAcceptedAt,
+                  ).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                  . Phone receipt is not confirmed.
+                </p>
+              )}
+            <p className="notification-help">
+              If it is late, check your phone’s Focus, notification summary and
+              battery restrictions. On iPhone, open HouseMate from its Home
+              Screen icon.
+            </p>
+          </div>
+        )}
         {pushError && (
           <p role="alert" className="notification-alert">
             {pushError}
