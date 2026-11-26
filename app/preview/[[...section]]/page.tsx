@@ -14,6 +14,7 @@ const sections = new Set<Section>([
   'house',
   'assistant',
   'profile',
+  'settings',
 ]);
 
 export default async function PreviewPage({

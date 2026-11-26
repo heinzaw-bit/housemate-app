@@ -45,6 +45,20 @@ export function DesignPreview({ section }: { section: Section }) {
   }, []);
 
   function selectHousehold(id: string) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('household', id);
+    for (const key of [
+      'record',
+      'meal',
+      'item',
+      'chore',
+      'event',
+      'announcement',
+      'poll',
+      'add',
+    ])
+      url.searchParams.delete(key);
+    window.history.replaceState(null, '', url);
     setSelectedId(id);
     window.sessionStorage.setItem(storageKey, id);
   }

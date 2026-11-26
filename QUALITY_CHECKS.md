@@ -1,5 +1,57 @@
 # Web release quality checks
 
+## Combined balances including Unpaid bills — 2026-11-16
+
+The API returns `expectedNetMinor`: confirmed `netMinor` plus full Unpaid bill
+totals credited to the planned payer, minus participants’ Unpaid shares. Home,
+Money member cards and Assistant show one combined amount with Includes unpaid
+bills and plain owed/owe labels. The separate pending-share
+card/rows are removed. Older API replies retain explicitly labelled confirmed
+amounts; the client does not calculate missing financial effects.
+
+Paid/Unpaid transitions leave the combined amount unchanged. Confirmed ledger
+entries and settlement previews retain their existing basis and
+labels. Removal previews now include API-calculated combined before/after
+amounts, so removing an Unpaid bill does not falsely promise unchanged displayed
+balances. The change is additive in OpenAPI and requires no migration.
+
+Database checks cover two members’ identical views, zero-sum allocations,
+Paid/Unpaid continuity, a planned payer outside the split and an Unpaid removal
+preview; all fixtures roll back. Live browser checks confirm the existing bill
+remains Unpaid, all nine members show combined amounts, Home and Money agree,
+the old pending-share card/rows are absent, and the 320px layout has no horizontal
+overflow. No live financial record was edited for verification. Separate
+simultaneous-device acceptance and production deployment remain outside these
+local checks.
+
+Validation passed: web lint, typecheck, all 244 tests and production build;
+API lint, typecheck, all 90 tests and build. The balance amount stays on one
+line at 320px after the final typography adjustment.
+
+## ZIP UI migration — 2026-11-15
+
+The first design pass is on `codex/zip-ui-redesign`. Lint, TypeScript and the
+production build pass with locally bundled DM Sans/Manrope. HTTP rendering checks
+return 200 for all five development preview sections and sign-in. Component tests
+cover household/record links, bill-total labels, empty/access-denied dashboard
+states, six House tools, and draft protection for House/Money navigation.
+
+Browser access was restored and the five preview pages were checked at desktop
+and phone widths, including 320px, in light and dark themes. All six House tools,
+four Money sections, three Profile tabs, the phone household sheet, THB/USD
+household switching and the preview-to-sign-in boundary were exercised. Browser
+testing found and fixed the initial-load theme-toggle hydration mismatch, narrow
+House card labels, the Profile preview badge squeezing the member name, and
+preview tool/tab state being lost when switching households. A dark-theme reload
+keeps the toggle enabled and produces no new hydration errors. Small Money tabs
+retain at least 44px touch areas. No horizontal page overflow was observed.
+
+Local Auth is now configured and signed-in Home/Money reads are verified.
+Financial confirmation, notification delivery, enlarged text, device safe areas
+and actual Android/iPhone behavior still need their own acceptance checks. The
+read-only preview does not establish those outcomes. The older Board checks below
+now apply to House’s Announcements and Events tools.
+
 Target platforms: **Android Chrome and iPhone Safari**, selected by the user. Implementation and automated checks are complete; the actual-device and signed-in rendered checks below remain pending as of 2026-09-30.
 
 ## Production push activation — 2026-10-02
@@ -32,6 +84,14 @@ Try “Plan dinner tomorrow at 7pm” without Gemini consent, including when pro
 
 Interrupt the confirmation response. The result stays Not yet confirmed; editing/cancelling that attempt is locked and manual retry uses the exact original payload/key. Verify one actual record/notification only. Simulate definitive validation errors to correct fields, lost membership to clear private drafts, and household/account changes during preparation/publication to ignore old private responses. Open drafts must block app-update/account-switch reloads. Check keyboard labels/focus after review/cancel, dark mode and phone layouts. Automated tests use mocks and do not establish real publication/notification delivery; signed-in rendered and phone checks remain pending.
 
+## Meals acceptance
+
+Open House and verify it starts on the tool grid. Choose Meals and check that Upcoming is selected and no detail opens automatically. Check Reply needed and Past, manual refresh, pagination, and a notification link to a meal outside the first page. Open New meal, reopen it while editing, and confirm the inputs remain. Test Cancel, publication, saved-draft recovery, and deadlines in the household timezone. On mobile, selecting a row focuses the detail, and Back to meals restores focus. Check that eligible participants can reply until the deadline and that cooking-role edits save only after confirmation.
+
+## Shopping and Chores acceptance
+
+Check that both tools open with no detail selected and that their House header buttons open and refocus drafts without resetting them. Confirm that shopping shows To buy and History, lets a member complete a purchase, and requires API-calculated shares before creating a linked expense. Confirm Chores opens on Assigned to me, includes each filter, and keeps completion and swaps in the detail. Check narrow layouts, Back focus, pagination, refresh during ordinary browsing, and notification links to records outside the first page.
+
 ## Household menu acceptance (rendered phone checks pending)
 
 Home must have no household picker beside its heading. Desktop: click anywhere on the sidebar household card, or use Enter/Space; verify current household check, Arrow-key navigation, Escape/dismissal and focus return. Switch to another accessible household from each main tab and verify selected-household links/content update with no retained private records. Create another household and verify the old memberships stay available. Paste a valid invitation link/code to open the normal invitation review; opening the form or checking invalid input must not accept membership. Open settings and verify the selected household anchor and normal role restrictions.
@@ -62,7 +122,7 @@ Record device model, OS/browser version, date, viewport/text scaling, connection
 
 ## Installation, offline, and updates
 
-1. Open sign-in and Profile. Verify readable installation help and keyboard access. Install via Chrome's offered prompt/menu or Safari Share → Add to Home Screen. Installation must not request notification permission.
+1. Open sign-in and Settings. Verify readable installation help and keyboard access. Install via Chrome's offered prompt/menu or Safari Share → Add to Home Screen. Installation must not request notification permission.
 2. Launch from the home screen, restore the account, and navigate every section. Check icon shape, Apple icon, top/bottom safe areas, and the five mobile navigation items in portrait and landscape.
 3. Open a money draft and disable networking. Verify the offline notice, unchanged entered values, no queued save, and a **Not yet confirmed / not sent** message for an explicit confirmation attempted offline.
 4. Simulate a confirmation reaching the API with its reply lost. Verify the form stays open and shows uncertainty; reconnect and retry that same review. Verify exactly one saved record and matching API-calculated shares/history. Repeat for a bill, settlement, edit, mistaken-record removal, and shopping purchase with expense. For bill status or purchase without expense, refresh the record before a second action.
@@ -144,14 +204,14 @@ On the production HTTPS origin, check the smiling house logo on landing, sign-in
 
 Check that the entire bottom sidebar profile block (divider, avatar and name) is absent and Home has no Quick actions button group. In Money, load at least four source entries and recorded transfers: each card starts with the three newest by source/transfer date; its Show more/Show less button has an accurate expanded state and works by keyboard. Expand/collapse each independently, select a different member and check the source preview resets, then load older pages after expanding a list with at least 50 records. Collapsing must not change the API-calculated balance or discard loaded history. A newly recorded backdated transfer must retain date order. Check 320px width and dark mode. Signed-in browser/device acceptance remains pending.
 
-### Attention cards and suggested transfers
+### Attention cards and manual transfers
 
-On desktop, check Bills to watch, Next chore and Next meal form a three-column row with equal heights and bottom-aligned action links; bill records must wrap rather than overflow. Check empty and three-bill results, long titles, 320px width, dark mode and zoom. On phones the cards must stack and grow with content. In Money, with at least three current suggestions, check only two show initially and its independent Show more/Show less button exposes the remaining suggestions without a new API read. Suggestions retain API calculation order (they have no date); Record after paying still opens the normal manual transfer preview/confirmation. Actual signed-in browser/device acceptance remains pending.
+On desktop, check Bills to watch, Next chore and Next meal form a three-column row with equal heights and bottom-aligned action links; bill records must wrap rather than overflow. Check empty and three-bill results, long titles, 320px width, dark mode and zoom. On phones the cards must stack and grow with content. In Money Overview, check that Recent activity previews two transfers under the shared summary cards. Member balances appear in Overview and Settlements. With exactly three transfers, check that View all expands Recent activity in Overview and Recorded transfers in Settlements in place. Expanded lists keep loaded transfers through refresh. Selecting a row opens its details in Settlements. For the owner, check that Record transfer sits beside Settlements, opens with empty member and amount fields, and requires a preview before confirmation. Check that an edited draft blocks tab navigation until discarded or saved. Check that admins and members can browse transfer history and cannot open the recording tab or preview or record through the API. Actual signed-in browser/device acceptance remains pending.
 
 
-## Profile settings hub acceptance
+## Profile and Settings acceptance
 
-Check My profile, Household and Preferences at 320px width and in both themes. Tabs must show one panel and support keyboard arrows plus Enter/Space, visible focus and screen-reader names. Email stays inside expandable account details; member list rows show names/roles without emails. Edit focuses the first field; unchanged Save is disabled, Cancel writes nothing and restores the saved summary/focus, failed saves keep the draft, and saving disables repeat submissions. Open drafts/reviews block section, ordinary navigation links, household/account changes and update/reload prompts. Browser history navigation and forced termination are not persistent draft recovery.
+Check Profile and Settings independently at 320px width and in both themes. Check the desktop Settings link, the Settings row in Profile on phones, and the household picker’s link and focus in Settings. Verify that the notifications link opens the selected household’s existing settings. Check visible keyboard focus and screen-reader names. Email stays inside expandable account details; member list rows show names/roles without emails. Edit focuses the first field; unchanged Save is disabled, Cancel writes nothing and restores the saved summary/focus, failed saves keep the draft, and saving disables repeat submissions. Open drafts/reviews block section, ordinary navigation links, household/account changes and update/reload prompts. Browser history navigation and forced termination are not persistent draft recovery.
 
 Follow Household settings from a different tab and from My profile/Preferences on the same route. Check member/admin/owner controls, timezone search including no results, currency locking after financial activity, and role review Cancel versus explicit Confirm. Verify active invitations first, history disclosure, create/copy/revoke, and seven-day/single-use guidance. Preferences must open the selected household's existing notification Settings view, show truthful push availability there, and keep installation separate from notification consent. Preview must perform no household API reads/writes. Signed-in rendering and Android Chrome/iPhone Safari acceptance remain manual checks.
 
@@ -172,7 +232,7 @@ Interrupt each create response, retain the original locked review, and explicitl
 
 ## Interaction motion acceptance
 
-On Android Chrome and iPhone Safari, switch every main tab; the header/nav should stay steady and incoming content fade without delaying a tap. Press New/Ask/Confirm and verify subtle feedback, normal focus and immediate actions. Open Search/household selectors at desktop/phone widths and check fade/slide, keyboard focus, dismissal and safe areas. Expand/collapse Home activity, money histories/suggestions/sources/transfers and Assistant records: first rows and amounts stay stable, content fades, scrolling remains usable. Ask a question: thinking stays inside its box, the mascot greets once per visit and the answer appears outside.
+On Android Chrome and iPhone Safari, switch every main tab; the header/nav should stay steady and incoming content fade without delaying a tap. Press New/Ask/Confirm and verify subtle feedback, normal focus and immediate actions. Open Search/household selectors at desktop/phone widths and check fade/slide, keyboard focus, dismissal and safe areas. Expand/collapse Home activity, money histories/sources/transfers and Assistant records: first rows and amounts stay stable, content fades, scrolling remains usable. Ask a question: thinking stays inside its box, the mascot greets once per visit and the answer appears outside.
 
 Verify success checks only after API-confirmed saves/acknowledgements/attendance; lost or failed confirmations must show uncertainty/error with no success check. Verify popup entry, auto-dismiss and manual dismissal: exiting content is immediately inert, no extra reads/writes occur, hover/focus/hidden pauses remain, and scope changes remove old popups. Enable OS Reduce motion: new entrance/press/greeting/list/check effects are absent and popup dismissal is immediate. Automated tests verify dismissal lifecycle, reduced-motion bypass, cleanup and existing financial state guards; CSS smoothness and real-device rendering/performance need phone acceptance.
 

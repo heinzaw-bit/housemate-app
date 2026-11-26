@@ -2,7 +2,7 @@ import type { Dashboard } from './api';
 
 export function moneyHref(
   householdId: string,
-  view: 'expenses' | 'bills' | 'balances',
+  view: 'expenses' | 'bills' | 'balances' | 'record-transfer',
   recordId?: string,
 ) {
   const params = new URLSearchParams({ household: householdId, view });

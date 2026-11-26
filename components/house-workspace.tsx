@@ -6,6 +6,8 @@ import { useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import type { Household } from '@/lib/api';
+import { usePendingWork } from '@/lib/pending-work';
+import { HouseTools, type HouseView } from './house-tools';
 import { WorkspaceLoading } from './workspace-loading';
 
 const AnnouncementWorkspace = dynamic(
@@ -37,15 +39,17 @@ const ShoppingWorkspace = dynamic(
   { loading: () => <WorkspaceLoading /> },
 );
 
-type HouseView =
-  | 'chores'
-  | 'shopping'
-  | 'meals'
-  | 'events'
-  | 'announcements'
-  | 'polls';
+const createLabels: Partial<Record<HouseView, string>> = {
+  meals: 'New meal',
+  shopping: 'New item',
+  chores: 'New chore',
+  events: 'New event',
+  announcements: 'New announcement',
+  polls: 'New poll',
+};
+
 function routeState(query: string): {
-  view: HouseView;
+  view: HouseView | null;
   focusId: string;
   add: boolean;
 } {
@@ -87,7 +91,8 @@ function routeState(query: string): {
       focusId: params.get('chore') ?? '',
       add: params.get('add') === '1',
     };
-  return { view: 'announcements', focusId: '', add: params.get('add') === '1' };
+  const add = params.get('add') === '1';
+  return { view: add ? 'announcements' : null, focusId: '', add };
 }
 
 export function HouseWorkspace({
@@ -97,7 +102,8 @@ export function HouseWorkspace({
   household: Household;
   token: string;
 }) {
-  const [view, setView] = useState<HouseView>('announcements');
+  const pending = usePendingWork();
+  const [view, setView] = useState<HouseView | null>(null);
   const [focusId, setFocusId] = useState('');
   const [focusSignal, setFocusSignal] = useState(0);
   const [createRequest, setCreateRequest] = useState<{
@@ -113,13 +119,16 @@ export function HouseWorkspace({
       setFocusId(next.focusId);
       if (next.focusId) setFocusSignal((current) => current + 1);
       setCreateRequest(
-        next.add ? { view: next.view, id: ++createNumber.current } : null,
+        next.add && next.view
+          ? { view: next.view, id: ++createNumber.current }
+          : null,
       );
     };
     syncRoute();
   }, [routeQuery]);
 
-  function select(next: 'announcements' | 'events') {
+  function select(next: HouseView) {
+    if (pending) return;
     setView(next);
     setFocusId('');
     setCreateRequest(null);
@@ -147,59 +156,38 @@ export function HouseWorkspace({
     focusSignal,
     createRequest: createRequest?.view === view ? createRequest.id : 0,
   };
-  const legacy = view !== 'announcements' && view !== 'events';
+  const createLabel = view && createLabels[view];
   return (
     <div className="space-y-5 pb-6">
       <div className="content-inner space-y-5 pt-5">
         <div className="page-heading-row">
           <div className="board-heading">
-            <span className="eyebrow">SHARED UPDATES, PLANS TOGETHER</span>
+            <span className="eyebrow">OUR HOUSE</span>
             <div className="board-title-row">
-              <h1>Board</h1>
-              {!legacy && (
+              <h1>House</h1>
+              {view && createLabel && (
                 <Button
                   type="button"
                   className="board-create-button"
-                  aria-label={
-                    view === 'events' ? 'New event' : 'New announcement'
-                  }
+                  aria-label={createLabel}
                   onClick={() =>
                     setCreateRequest({ view, id: ++createNumber.current })
                   }
                 >
                   <Plus size={17} aria-hidden="true" />
                   <span className="board-create-short">New</span>
-                  <span className="board-create-full">
-                    {view === 'events' ? 'New event' : 'New announcement'}
-                  </span>
+                  <span className="board-create-full">{createLabel}</span>
                 </Button>
               )}
             </div>
-            <p>Share announcements, plan events, and see who’s joining.</p>
+            <p>Plans, tasks, and the everyday things you share.</p>
           </div>
         </div>
-        <nav aria-label="Board sections" className="flex gap-6 border-b">
-          {(['announcements', 'events'] as const).map((section) => (
-            <button
-              type="button"
-              key={section}
-              aria-current={view === section ? 'page' : undefined}
-              onClick={() => select(section)}
-              className={
-                'min-h-11 border-b-2 px-1 pb-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring ' +
-                (view === section
-                  ? 'border-primary text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground')
-              }
-            >
-              {section === 'announcements' ? 'Announcements' : 'Events'}
-            </button>
-          ))}
-        </nav>
-        {legacy && (
-          <Button variant="ghost" onClick={() => select('announcements')}>
-            Back to announcements
-          </Button>
+        <HouseTools view={view} onSelect={select} disabled={pending} />
+        {pending && (
+          <p role="status" className="design-muted">
+            Finish or discard the open draft before switching tools.
+          </p>
         )}
       </div>
       {view === 'announcements' ? (
@@ -214,9 +202,9 @@ export function HouseWorkspace({
         <ShoppingWorkspace {...props} />
       ) : view === 'meals' ? (
         <MealWorkspace {...props} />
-      ) : (
-        <PollWorkspace {...props} onHouseChanged={() => {}} />
-      )}
+      ) : view === 'polls' ? (
+        <PollWorkspace {...props} compact onHouseChanged={() => {}} />
+      ) : null}
     </div>
   );
 }

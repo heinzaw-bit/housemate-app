@@ -1,7 +1,7 @@
 'use client';
 
 import { Plus, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -199,6 +199,7 @@ export function PollWorkspace({
   focusedId = '',
   focusSignal = 0,
   createRequest = 0,
+  compact = false,
   onHouseChanged,
 }: {
   household: Household;
@@ -206,6 +207,7 @@ export function PollWorkspace({
   focusedId?: string;
   focusSignal?: number;
   createRequest?: number;
+  compact?: boolean;
   onHouseChanged: () => void;
 }) {
   const [scope, setScope] = useState<PollScope>('open');
@@ -220,6 +222,7 @@ export function PollWorkspace({
   });
   const audience = useCommunicationMembers(token, household.id);
   const [formOpen, setFormOpen] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   useLeaveGuard(formOpen);
   const [question, setQuestion] = useState('');
   const [options, setOptions] = useState(emptyOptions);
@@ -259,6 +262,28 @@ export function PollWorkspace({
   useEffect(() => {
     if (createRequest) setFormOpen(true);
   }, [createRequest]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Refocus the current draft when the header action is used again.
+  useEffect(() => {
+    if (!formOpen) return;
+    const form = formRef.current;
+    (form?.querySelector<HTMLInputElement>('#poll-question') ?? form)?.focus({
+      preventScroll: true,
+    });
+    form?.scrollIntoView({ block: 'start' });
+  }, [createRequest, formOpen]);
+
+  function closeDraft() {
+    savedDraft.clear();
+    setFormOpen(false);
+    setReviewing(false);
+    setQuestion('');
+    setOptions(emptyOptions());
+    setAllowMultiple(false);
+    setDeadlineLocal(householdLocalTime(household.timezone, 24));
+    setVoterIds(null);
+    setFormError('');
+    publicationKey.reset();
+  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -295,17 +320,9 @@ export function PollWorkspace({
           publicationKey.forDraft(draft),
         ),
       });
-      savedDraft.clear();
+      closeDraft();
       browser.accept(created);
       setScope('open');
-      setFormOpen(false);
-      setReviewing(false);
-      setQuestion('');
-      setOptions(emptyOptions());
-      setAllowMultiple(false);
-      setDeadlineLocal(householdLocalTime(household.timezone, 24));
-      setVoterIds(null);
-      publicationKey.reset();
       setNotice('Poll published. Selected members can now vote.');
       onHouseChanged();
       void browser.refresh(true);
@@ -324,6 +341,7 @@ export function PollWorkspace({
     <CommunicationBrowser
       title="Polls"
       subtitle="Make decisions together and keep the results clear."
+      compact={compact}
       createOpen={formOpen}
       draftNotice={
         <SavedDraftNotice
@@ -333,8 +351,8 @@ export function PollWorkspace({
         />
       }
       onToggleCreate={() => {
-        if (formOpen) savedDraft.clear();
-        setFormOpen((old) => !old);
+        if (formOpen) closeDraft();
+        else setFormOpen(true);
       }}
       form={
         <Card>
@@ -347,8 +365,10 @@ export function PollWorkspace({
           </CardHeader>
           <CardContent>
             <form
+              ref={formRef}
+              tabIndex={-1}
               onSubmit={(event) => void submit(event)}
-              className="space-y-4"
+              className="scroll-mt-6 space-y-4"
             >
               {audience.error && (
                 <div role="alert" className="text-sm text-destructive">
@@ -504,6 +524,15 @@ export function PollWorkspace({
                 </>
               )}
               <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={saving}
+                  aria-label="Cancel poll draft"
+                  onClick={closeDraft}
+                >
+                  Cancel
+                </Button>
                 {reviewing && (
                   <Button
                     type="button"
@@ -546,7 +575,6 @@ export function PollWorkspace({
       notice={notice}
       onOpen={(id) => void browser.open(id)}
       onClose={browser.close}
-      onRefresh={() => void browser.refresh()}
       onMore={() => void browser.loadMore()}
       renderRow={(record) => (
         <>

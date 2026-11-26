@@ -2,8 +2,6 @@
 
 import { ArrowRight, Plus, ReceiptText } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { FinancialHistory } from '@/components/financial-history';
-import { ReadStatus } from '@/components/read-status';
 import { SuccessNotice } from '@/components/success-notice';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -788,12 +786,6 @@ export function ExpenseWorkspace({
           </CardContent>
         </Card>
       )}
-      <ReadStatus
-        token={token}
-        path={readPath}
-        refreshing={loading}
-        error={loadError}
-      />
       {loading && !recentRead(token, readPath) && (
         <WorkspaceLoading kind="records" />
       )}
@@ -802,7 +794,8 @@ export function ExpenseWorkspace({
           role="alert"
           className="space-x-3 rounded-xl bg-destructive/10 p-4 text-sm text-destructive"
         >
-          {loadError}
+          {loadError}{' '}
+          {expenses.length > 0 ? 'Shown expenses may be out of date.' : ''}
           <Button variant="outline" size="sm" onClick={() => void load()}>
             Retry
           </Button>
@@ -1039,13 +1032,6 @@ export function ExpenseWorkspace({
                       </div>
                     ))}
                   </div>
-                  <FinancialHistory
-                    key={`history-${selected.id}-${selected.revision}`}
-                    token={token}
-                    householdId={household.id}
-                    recordId={selected.id}
-                    kind="expense"
-                  />
                 </div>
               )}
             </CardContent>

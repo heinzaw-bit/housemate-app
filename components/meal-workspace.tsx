@@ -3,10 +3,10 @@
 import {
   CalendarDays,
   ChefHat,
-  RefreshCw,
+  ChevronRight,
   UtensilsCrossed,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { SuccessNotice } from '@/components/success-notice';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,7 +17,6 @@ import {
   getMembers,
   type Household,
   type HouseholdMember,
-  type Meal,
   type MealDraft,
   type MealResponse,
   type MealRole,
@@ -25,7 +24,10 @@ import {
   setMealCookingRoles,
 } from '@/lib/api';
 import { useLeaveGuard } from '@/lib/pending-work';
+import { useHouseRecords } from '@/lib/use-house-records';
+import { RecordRefreshButton } from './communication-parts';
 import { SavedDraftNotice, useSavedDraft } from './saved-draft';
+import { WorkspaceLoading } from './workspace-loading';
 
 function localNow(timezone: string, hoursAhead: number): string {
   const date = new Date(Date.now() + hoursAhead * 3_600_000);
@@ -62,7 +64,6 @@ export function MealWorkspace({
   focusedId = '',
   focusSignal = 0,
   createRequest = 0,
-  refreshSignal = 0,
   onHouseChanged = () => {},
 }: {
   household: Household;
@@ -70,26 +71,36 @@ export function MealWorkspace({
   focusedId?: string;
   focusSignal?: number;
   createRequest?: number;
-  refreshSignal?: number;
   onHouseChanged?: () => void;
 }) {
-  const [meals, setMeals] = useState<Meal[]>([]);
   const [members, setMembers] = useState<HouseholdMember[]>([]);
-  const [selectedId, setSelectedId] = useState('');
+  const [memberError, setMemberError] = useState('');
+  const [loadingMembers, setLoadingMembers] = useState(true);
+  const membersRequest = useRef(0);
   const [filter, setFilter] = useState<'reply' | 'upcoming' | 'past'>(
     'upcoming',
   );
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
-  const [rawOffset, setRawOffset] = useState(0);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const requestNumber = useRef(0);
-  const [loading, setLoading] = useState(true);
+  const browser = useHouseRecords({
+    token,
+    householdId: household.id,
+    scope: filter,
+    loadPage: getMeals,
+    getRecord: getMeal,
+    focusedId,
+    focusSignal,
+  });
+  const { records: meals, selected, open, close } = browser;
+  const formRef = useRef<HTMLFormElement>(null);
+  const handledCreate = useRef(0);
+  const detailRef = useRef<HTMLDivElement>(null);
+  const activeRow = useRef<HTMLButtonElement | null>(null);
+  const filterRef = useRef<HTMLFieldSetElement>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [showForm, setShowForm] = useState(false);
-  useLeaveGuard(showForm);
+  const [editingRoles, setEditingRoles] = useState(false);
+  useLeaveGuard(showForm || editingRoles || saving);
   const [mealType, setMealType] = useState<MealDraft['mealType']>('dinner');
   const [question, setQuestion] = useState('Who is joining?');
   const [startsAtLocal, setStartsAtLocal] = useState(() =>
@@ -108,7 +119,7 @@ export function MealWorkspace({
   const [roles, setRoles] = useState<MealRole[]>([]);
   const [detailRoleMemberId, setDetailRoleMemberId] = useState('');
   const [detailRoleLabel, setDetailRoleLabel] = useState('Cook');
-  const selected = meals.find((meal) => meal.id === selectedId) ?? null;
+  const selectedId = selected?.id;
 
   const savedDraft = useSavedDraft({
     kind: 'meal',
@@ -138,123 +149,102 @@ export function MealWorkspace({
     },
   });
 
-  async function refresh() {
-    const request = ++requestNumber.current;
-    setLoading(true);
-    setError('');
+  const loadMembers = useCallback(async () => {
+    const request = ++membersRequest.current;
+    setLoadingMembers(true);
+    setMemberError('');
     try {
-      const [nextMeals, nextMembers] = await Promise.all([
-        getMeals(token, household.id, filter),
-        getMembers(token, household.id),
-      ]);
-      if (request !== requestNumber.current) return;
-      setMeals((current) => [
-        ...nextMeals,
-        ...current.filter((item) => {
-          if (
-            item.id !== focusedId ||
-            nextMeals.some((next) => next.id === item.id)
-          )
-            return false;
-          const starts = new Date(item.startsAt).getTime();
-          return filter === 'upcoming'
-            ? starts >= Date.now()
-            : filter === 'past' && starts < Date.now();
-        }),
-      ]);
-      setRawOffset(nextMeals.length);
-      setHasMore(nextMeals.length === 50);
-      setMembers(nextMembers);
-      setSelectedId((current) =>
-        current && nextMeals.some((item) => item.id === current)
-          ? current
-          : focusedId && filter !== 'reply'
-            ? focusedId
-            : (nextMeals[0]?.id ?? ''),
-      );
+      const next = await getMembers(token, household.id);
+      if (request !== membersRequest.current) return;
+      setMembers(next);
       setParticipantIds((current) =>
-        current.length ? current : nextMembers.map((member) => member.id),
+        current.length
+          ? current.filter((id) => next.some((member) => member.id === id))
+          : next.map((member) => member.id),
       );
     } catch (failure) {
-      if (request !== requestNumber.current) return;
-      setMeals([]);
+      if (request !== membersRequest.current) return;
       setMembers([]);
-      setError(message(failure));
+      setMemberError(message(failure));
     } finally {
-      if (request === requestNumber.current) setLoading(false);
+      if (request === membersRequest.current) setLoadingMembers(false);
     }
-  }
-  // biome-ignore lint/correctness/useExhaustiveDependencies: refresh is recreated each render; these inputs select the page to fetch.
-  useEffect(() => {
-    void refresh();
-    return () => {
-      requestNumber.current += 1;
-    };
-  }, [token, household.id, filter]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: A successful reply requests one fresh list read.
-  useEffect(() => {
-    if (refreshSignal) void refresh();
-  }, [refreshSignal]);
-  useEffect(() => {
-    if (createRequest) setShowForm(true);
-  }, [createRequest]);
-  useEffect(() => {
-    if (!focusedId || !focusSignal) return;
-    let active = true;
-    void getMeal(token, household.id, focusedId).then(
-      (meal) => {
-        if (!active) return;
-        setMeals((current) => [
-          meal,
-          ...current.filter((item) => item.id !== meal.id),
-        ]);
-        setSelectedId(meal.id);
-        setFilter(
-          new Date(meal.startsAt).getTime() < Date.now() ? 'past' : 'upcoming',
-        );
-        setDetailOpen(true);
-      },
-      (failure) => {
-        if (active) setError(message(failure));
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [focusedId, focusSignal, household.id, token]);
-  useEffect(() => {
-    setRoles(
-      selected?.cookingRoles.map(({ memberId, role }) => ({
-        memberId,
-        role,
-      })) ?? [],
-    );
-  }, [selected?.cookingRoles]);
+  }, [token, household.id]);
 
-  function updateMeal(meal: Meal) {
-    setMeals((current) =>
-      current.map((item) => (item.id === meal.id ? meal : item)),
-    );
-  }
-  async function loadMore() {
-    const request = requestNumber.current;
-    setLoadingMore(true);
-    setError('');
-    try {
-      const next = await getMeals(token, household.id, filter, 50, rawOffset);
-      if (request !== requestNumber.current) return;
-      setMeals((current) => [
-        ...current,
-        ...next.filter((meal) => !current.some((old) => old.id === meal.id)),
-      ]);
-      setRawOffset((current) => current + next.length);
-      setHasMore(next.length === 50);
-    } catch (failure) {
-      if (request === requestNumber.current) setError(message(failure));
-    } finally {
-      setLoadingMore(false);
+  useEffect(() => {
+    void loadMembers();
+    return () => {
+      membersRequest.current += 1;
+    };
+  }, [loadMembers]);
+
+  useEffect(() => {
+    if (!createRequest || createRequest === handledCreate.current) return;
+    handledCreate.current = createRequest;
+    if (editingRoles) {
+      setError('Save or cancel the cooking roles before starting a new meal.');
+      return;
     }
+    setError('');
+    if (!showForm) {
+      setStartsAtLocal(localNow(household.timezone, 24));
+      setResponseDeadlineLocal(localNow(household.timezone, 20));
+    }
+    setShowForm(true);
+  }, [createRequest, editingRoles, household.timezone, showForm]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: A new header request refocuses the current draft.
+  useEffect(() => {
+    if (!showForm) return;
+    const form = formRef.current;
+    form
+      ?.querySelector<HTMLInputElement>('input[name="question"]')
+      ?.focus({ preventScroll: true });
+    form?.scrollIntoView({ block: 'start' });
+  }, [createRequest, showForm]);
+
+  useEffect(() => {
+    setEditingRoles(false);
+    if (selectedId && window.matchMedia('(max-width: 1023px)').matches) {
+      detailRef.current?.focus({ preventScroll: true });
+      detailRef.current?.scrollIntoView({ block: 'start' });
+    }
+  }, [selectedId]);
+
+  function closeDetail() {
+    close();
+    requestAnimationFrame(() => {
+      const row = activeRow.current;
+      const activeFilter = filterRef.current?.querySelector<HTMLButtonElement>(
+        'button[aria-pressed="true"]',
+      );
+      (row?.isConnected ? row : activeFilter)?.focus();
+    });
   }
+
+  function resetForm() {
+    setMealType('dinner');
+    setQuestion('Who is joining?');
+    setStartsAtLocal(localNow(household.timezone, 24));
+    setResponseDeadlineLocal(localNow(household.timezone, 20));
+    setParticipantIds(members.map((member) => member.id));
+    setDraftRoles([]);
+    setRoleMemberId('');
+    setRoleLabel('Cook');
+    setIdempotencyKey(crypto.randomUUID());
+    setError('');
+    setShowForm(false);
+  }
+
+  function editRoles() {
+    if (!selected) return;
+    setRoles(
+      selected.cookingRoles.map(({ memberId, role }) => ({ memberId, role })),
+    );
+    setDetailRoleMemberId('');
+    setDetailRoleLabel('Cook');
+    setEditingRoles(true);
+  }
+
   function toggleParticipant(id: string) {
     setParticipantIds((current) =>
       current.includes(id)
@@ -310,17 +300,11 @@ export function MealWorkspace({
         idempotencyKey: savedDraft.confirmationKey(fields, idempotencyKey),
       });
       savedDraft.clear();
-      setMeals((current) => [
-        meal,
-        ...current.filter((item) => item.id !== meal.id),
-      ]);
-      setSelectedId(meal.id);
-      setShowForm(false);
+      resetForm();
+      browser.accept(meal);
       setNotice('Meal check published.');
-      setFilter('upcoming');
+      void browser.refresh(true);
       onHouseChanged();
-      setIdempotencyKey(crypto.randomUUID());
-      setDraftRoles([]);
     } catch (failure) {
       savedDraft.reject(failure);
       setError(message(failure));
@@ -334,11 +318,11 @@ export function MealWorkspace({
     setError('');
     setNotice('');
     try {
-      updateMeal(
+      browser.accept(
         await respondToMeal(token, household.id, selected.id, response),
       );
       setNotice('Your response was saved.');
-      if (filter === 'reply') void refresh();
+      if (filter === 'reply') void browser.refresh(true);
       onHouseChanged();
     } catch (failure) {
       setError(message(failure));
@@ -352,9 +336,10 @@ export function MealWorkspace({
     setError('');
     setNotice('');
     try {
-      updateMeal(
+      browser.accept(
         await setMealCookingRoles(token, household.id, selected.id, roles),
       );
+      setEditingRoles(false);
       setNotice('Cooking roles updated.');
     } catch (failure) {
       setError(message(failure));
@@ -367,25 +352,17 @@ export function MealWorkspace({
   const myResponse = selected?.participants.find(
     (person) => person.memberId === selected.viewerMemberId,
   )?.response;
-  const now = Date.now();
-  const visible = meals;
 
   return (
     <div className="content-inner space-y-6">
       <SavedDraftNotice
         draft={savedDraft}
         disabled={saving}
-        resumeDisabled={loading || !members.length}
+        resumeDisabled={loadingMembers || !members.length}
       />
-      <div>
-        <h2 className="text-xl font-semibold">Meals</h2>
-        <p className="text-sm text-muted-foreground">
-          Reply to meal checks and see who is cooking.
-        </p>
-      </div>
-      {error && (
+      {(browser.error || error) && (
         <p className="form-message error" role="alert">
-          {error}
+          {error || browser.error}
         </p>
       )}
       {notice && (
@@ -393,416 +370,567 @@ export function MealWorkspace({
           {notice}
         </SuccessNotice>
       )}
-      {showForm && (
+      {showForm ? (
         <Card>
           <CardHeader>
-            <CardTitle>Create a meal check</CardTitle>
+            <CardTitle>New meal check</CardTitle>
             <p className="text-sm text-muted-foreground">
               Times use {household.timezone}, your household timezone.
             </p>
           </CardHeader>
           <CardContent>
-            <form onSubmit={submitMeal} className="space-y-5">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="grid gap-1 text-sm font-medium">
-                  Meal type
-                  <select
-                    className="h-10 rounded-md border bg-background px-3"
-                    value={mealType}
-                    onChange={(event) =>
-                      setMealType(event.target.value as MealDraft['mealType'])
-                    }
-                  >
-                    <option value="breakfast">Breakfast</option>
-                    <option value="lunch">Lunch</option>
-                    <option value="dinner">Dinner</option>
-                    <option value="other">Other</option>
-                  </select>
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Question
-                  <input
-                    className="h-10 rounded-md border bg-background px-3"
-                    required
-                    maxLength={240}
-                    value={question}
-                    onChange={(event) => setQuestion(event.target.value)}
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Meal date and time · {household.timezone}
-                  <input
-                    className="h-10 rounded-md border bg-background px-3"
-                    type="datetime-local"
-                    required
-                    value={startsAtLocal}
-                    onChange={(event) => setStartsAtLocal(event.target.value)}
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Response deadline · {household.timezone}
-                  <input
-                    className="h-10 rounded-md border bg-background px-3"
-                    type="datetime-local"
-                    required
-                    value={responseDeadlineLocal}
-                    onChange={(event) =>
-                      setResponseDeadlineLocal(event.target.value)
-                    }
-                  />
-                </label>
-              </div>
-              <fieldset>
-                <legend className="mb-2 text-sm font-semibold">
-                  Who can answer?
-                </legend>
-                <div className="flex flex-wrap gap-2">
-                  {members.map((member) => (
-                    <label
-                      key={member.id}
-                      className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={participantIds.includes(member.id)}
-                        onChange={() => toggleParticipant(member.id)}
-                      />
-                      {member.displayName}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold">
-                  Cooking roles (optional)
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  <select
-                    aria-label="Member to assign"
-                    className="h-10 rounded-md border bg-background px-3"
-                    value={roleMemberId}
-                    onChange={(event) => setRoleMemberId(event.target.value)}
-                  >
-                    <option value="">Choose member</option>
-                    {members
-                      .filter((member) => participantIds.includes(member.id))
-                      .map((member) => (
-                        <option key={member.id} value={member.id}>
-                          {member.displayName}
-                        </option>
-                      ))}
-                  </select>
-                  <input
-                    aria-label="Cooking role"
-                    className="h-10 rounded-md border bg-background px-3"
-                    maxLength={60}
-                    value={roleLabel}
-                    onChange={(event) => setRoleLabel(event.target.value)}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() =>
-                      addRole(
-                        draftRoles,
-                        setDraftRoles,
-                        roleMemberId,
-                        roleLabel,
-                      )
-                    }
-                  >
-                    Add role
-                  </Button>
-                </div>
-                {draftRoles.map((role, index) => (
-                  <div
-                    key={`${role.memberId}:${role.role}`}
-                    className="flex items-center gap-2 text-sm"
-                  >
-                    <ChefHat size={15} />
-                    {roleName(role.memberId)} · {role.role}
-                    <button
-                      type="button"
-                      className="text-primary underline"
-                      onClick={() =>
-                        setDraftRoles(draftRoles.filter((_, i) => i !== index))
+            <form
+              id="new-meal"
+              ref={formRef}
+              onSubmit={submitMeal}
+              className="scroll-mt-6 space-y-5"
+            >
+              <fieldset className="min-w-0 space-y-5" disabled={saving}>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="grid gap-1 text-sm font-medium">
+                    Meal type
+                    <select
+                      className="h-10 rounded-md border bg-background px-3"
+                      value={mealType}
+                      onChange={(event) =>
+                        setMealType(event.target.value as MealDraft['mealType'])
                       }
                     >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <Button type="submit" disabled={saving || loading}>
-                {saving ? 'Publishing…' : 'Publish meal check'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  savedDraft.clear();
-                  setShowForm(false);
-                }}
-              >
-                Close
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      )}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <fieldset className="flex flex-wrap gap-2">
-          <legend className="sr-only">Filter meal checks</legend>
-          {(['reply', 'upcoming', 'past'] as const).map((key) => (
-            <Button
-              key={key}
-              variant={filter === key ? 'default' : 'outline'}
-              aria-pressed={filter === key}
-              onClick={() => {
-                setFilter(key);
-                setSelectedId('');
-                setDetailOpen(false);
-              }}
-            >
-              {key === 'reply'
-                ? 'Reply needed'
-                : key === 'past'
-                  ? 'Past'
-                  : 'Upcoming'}
-            </Button>
-          ))}
-        </fieldset>
-        <Button
-          variant="outline"
-          onClick={() => void refresh()}
-          disabled={loading}
-        >
-          <RefreshCw size={16} /> Refresh
-        </Button>
-      </div>
-      {loading ? (
-        <p role="status">Loading meals…</p>
-      ) : visible.length === 0 ? (
-        <Card className="p-6 text-center">
-          <UtensilsCrossed className="mx-auto mb-2" />
-          <p>
-            {filter === 'reply'
-              ? 'No meal checks need your reply.'
-              : filter === 'past'
-                ? 'No past meal checks.'
-                : 'No upcoming meal checks.'}
-          </p>
-        </Card>
-      ) : (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
-          <div className={`space-y-2 ${detailOpen ? 'max-lg:hidden' : ''}`}>
-            {visible.map((meal) => (
-              <button
-                key={meal.id}
-                type="button"
-                onClick={() => {
-                  setSelectedId(meal.id);
-                  setDetailOpen(true);
-                  setError('');
-                  setNotice('');
-                }}
-                className={`w-full rounded-xl border p-4 text-left transition-colors hover:bg-muted/40 ${selectedId === meal.id ? 'border-primary bg-muted/30' : ''}`}
-              >
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {meal.mealType}
-                </span>
-                <strong className="mt-1 block">{meal.question}</strong>
-                <span className="mt-2 block text-sm text-muted-foreground">
-                  {time(meal.startsAt, meal.timezone)}
-                </span>
-                {new Date(meal.responseDeadline).getTime() > now && (
-                  <span className="mt-1 block text-sm text-muted-foreground">
-                    Answer by {time(meal.responseDeadline, meal.timezone)}
-                  </span>
-                )}
-                <span className="mt-1 block text-sm">
-                  {meal.counts.joining} joining · {meal.counts.maybe} maybe
-                </span>
-              </button>
-            ))}
-          </div>
-          {selected && (
-            <Card className={detailOpen ? '' : 'max-lg:hidden'}>
-              <CardHeader>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mb-2 self-start lg:hidden"
-                  onClick={() => setDetailOpen(false)}
-                >
-                  Back to meals
-                </Button>
-                <span className="eyebrow">
-                  {selected.mealType.toUpperCase()}
-                </span>
-                <CardTitle>{selected.question}</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  <CalendarDays size={15} className="mr-1 inline" />
-                  {time(selected.startsAt, selected.timezone)} ·{' '}
-                  {selected.timezone}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Answer by {time(selected.responseDeadline, selected.timezone)}{' '}
-                  · Created by {selected.creatorDisplayName}
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h3 className="mb-2 font-semibold">Responses</h3>
-                  <p className="text-sm">
-                    {selected.counts.joining} joining ·{' '}
-                    {selected.counts.notJoining} not joining ·{' '}
-                    {selected.counts.maybe} maybe · {selected.counts.awaiting}{' '}
-                    waiting
-                  </p>
-                  <ul className="mt-3 divide-y text-sm">
-                    {selected.participants.map((person) => (
-                      <li
-                        key={person.memberId}
-                        className="flex justify-between gap-2 py-2"
-                      >
-                        <span>{person.displayName}</span>
-                        <span className="text-muted-foreground">
-                          {person.response?.replace('_', ' ') ??
-                            'Awaiting answer'}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  {selected.canRespond ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {(
-                        [
-                          ['joining', 'Joining'],
-                          ['not_joining', 'Not joining'],
-                          ['maybe', 'Maybe'],
-                        ] as const
-                      ).map(([value, label]) => (
-                        <Button
-                          key={value}
-                          type="button"
-                          variant={myResponse === value ? 'default' : 'outline'}
-                          aria-pressed={myResponse === value}
-                          disabled={saving}
-                          onClick={() => void answer(value)}
-                        >
-                          {label}
-                        </Button>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-3 text-sm text-muted-foreground">
-                      {new Date(selected.responseDeadline).getTime() <=
-                      Date.now()
-                        ? 'Responses are closed.'
-                        : 'You are not selected to answer this meal check.'}
-                    </p>
-                  )}
+                      <option value="breakfast">Breakfast</option>
+                      <option value="lunch">Lunch</option>
+                      <option value="dinner">Dinner</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium">
+                    Question
+                    <input
+                      className="h-10 rounded-md border bg-background px-3"
+                      name="question"
+                      required
+                      maxLength={240}
+                      value={question}
+                      onChange={(event) => setQuestion(event.target.value)}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium">
+                    Meal date and time · {household.timezone}
+                    <input
+                      className="h-10 rounded-md border bg-background px-3"
+                      type="datetime-local"
+                      required
+                      value={startsAtLocal}
+                      onChange={(event) => setStartsAtLocal(event.target.value)}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium">
+                    Response deadline · {household.timezone}
+                    <input
+                      className="h-10 rounded-md border bg-background px-3"
+                      type="datetime-local"
+                      required
+                      value={responseDeadlineLocal}
+                      onChange={(event) =>
+                        setResponseDeadlineLocal(event.target.value)
+                      }
+                    />
+                  </label>
                 </div>
-                <div className="space-y-3 border-t pt-5">
-                  <h3 className="font-semibold">Who is cooking?</h3>
-                  {selected.cookingRoles.length ? (
-                    <ul className="space-y-1 text-sm">
-                      {selected.cookingRoles.map((role) => (
-                        <li key={`${role.memberId}:${role.role}`}>
-                          <ChefHat size={15} className="mr-2 inline" />
-                          {role.displayName} · {role.role}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No cooking roles assigned yet.
-                    </p>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    Any active member can update the cooking plan. Choose from
-                    selected participants.
-                  </p>
+                <fieldset>
+                  <legend className="mb-2 text-sm font-semibold">
+                    Who can answer?
+                  </legend>
+                  <div className="flex flex-wrap gap-2">
+                    {members.map((member) => (
+                      <label
+                        key={member.id}
+                        className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={participantIds.includes(member.id)}
+                          onChange={() => toggleParticipant(member.id)}
+                        />
+                        {member.displayName}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                <details className="space-y-3 rounded-xl border p-3">
+                  <summary className="cursor-pointer text-sm font-semibold">
+                    Cooking roles (optional)
+                    {draftRoles.length ? ` · ${draftRoles.length}` : ''}
+                  </summary>
                   <div className="flex flex-wrap gap-2">
                     <select
-                      aria-label="Member for cooking role"
+                      aria-label="Member to assign"
                       className="h-10 rounded-md border bg-background px-3"
-                      value={detailRoleMemberId}
-                      onChange={(event) =>
-                        setDetailRoleMemberId(event.target.value)
-                      }
+                      value={roleMemberId}
+                      onChange={(event) => setRoleMemberId(event.target.value)}
                     >
                       <option value="">Choose member</option>
-                      {selected.participants.map((person) => (
-                        <option key={person.memberId} value={person.memberId}>
-                          {person.displayName}
-                        </option>
-                      ))}
+                      {members
+                        .filter((member) => participantIds.includes(member.id))
+                        .map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.displayName}
+                          </option>
+                        ))}
                     </select>
                     <input
-                      aria-label="Role name"
+                      aria-label="Cooking role"
                       className="h-10 rounded-md border bg-background px-3"
                       maxLength={60}
-                      value={detailRoleLabel}
-                      onChange={(event) =>
-                        setDetailRoleLabel(event.target.value)
-                      }
+                      value={roleLabel}
+                      onChange={(event) => setRoleLabel(event.target.value)}
                     />
                     <Button
                       type="button"
                       variant="outline"
                       onClick={() =>
                         addRole(
-                          roles,
-                          setRoles,
-                          detailRoleMemberId,
-                          detailRoleLabel,
+                          draftRoles,
+                          setDraftRoles,
+                          roleMemberId,
+                          roleLabel,
                         )
                       }
                     >
                       Add role
                     </Button>
                   </div>
-                  {roles.map((role, index) => (
+                  {draftRoles.map((role, index) => (
                     <div
                       key={`${role.memberId}:${role.role}`}
                       className="flex items-center gap-2 text-sm"
                     >
+                      <ChefHat size={15} />
                       {roleName(role.memberId)} · {role.role}
                       <button
                         type="button"
                         className="text-primary underline"
                         onClick={() =>
-                          setRoles(roles.filter((_, i) => i !== index))
+                          setDraftRoles(
+                            draftRoles.filter((_, i) => i !== index),
+                          )
                         }
                       >
                         Remove
                       </button>
                     </div>
                   ))}
+                </details>
+              </fieldset>
+              {loadingMembers && <p role="status">Loading members…</p>}
+              {memberError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {memberError}{' '}
                   <Button
                     type="button"
-                    disabled={saving}
-                    onClick={() => void saveRoles()}
+                    variant="link"
+                    onClick={() => void loadMembers()}
                   >
-                    {saving ? 'Saving…' : 'Save cooking roles'}
+                    Retry members
                   </Button>
-                </div>
-              </CardContent>
-            </Card>
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={saving}
+                  aria-label="Cancel meal draft"
+                  onClick={() => {
+                    savedDraft.clear();
+                    resetForm();
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={saving || loadingMembers || !!memberError}
+                >
+                  {saving ? 'Publishing…' : 'Publish meal check'}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-2">
+            <fieldset className="board-record-filters min-w-0" ref={filterRef}>
+              <legend className="sr-only">Filter meal checks</legend>
+              {(
+                [
+                  ['upcoming', 'Upcoming'],
+                  ['reply', 'Reply needed'],
+                  ['past', 'Past'],
+                ] as const
+              ).map(([key, label]) => (
+                <Button
+                  key={key}
+                  size="sm"
+                  disabled={saving || editingRoles}
+                  variant={filter === key ? 'default' : 'outline'}
+                  aria-pressed={filter === key}
+                  onClick={() => {
+                    activeRow.current = null;
+                    setError('');
+                    setNotice('');
+                    close();
+                    setFilter(key);
+                  }}
+                >
+                  {label}
+                </Button>
+              ))}
+            </fieldset>
+            <RecordRefreshButton
+              label="meals"
+              loading={browser.loading || saving || editingRoles}
+              onRefresh={() => void browser.refresh()}
+            />
+          </div>
+          {browser.detailLoading && (
+            <p role="status" className="text-sm text-muted-foreground">
+              Opening meal…
+            </p>
           )}
-        </div>
-      )}
-      {hasMore && !loading && (
-        <Button
-          variant="outline"
-          onClick={() => void loadMore()}
-          disabled={loadingMore}
-          className={detailOpen ? 'max-lg:hidden' : ''}
-        >
-          {loadingMore ? 'Loading…' : 'Load more meal checks'}
-        </Button>
+          {browser.loading && meals.length === 0 && !selected && (
+            <WorkspaceLoading />
+          )}
+          {!browser.loading &&
+            meals.length === 0 &&
+            !selected &&
+            !browser.error && (
+              <Card>
+                <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
+                  <UtensilsCrossed
+                    size={32}
+                    className="text-primary"
+                    aria-hidden="true"
+                  />
+                  <h3 className="font-heading text-lg">
+                    {filter === 'reply'
+                      ? 'No meals need your reply'
+                      : filter === 'past'
+                        ? 'No past meals'
+                        : 'No upcoming meals'}
+                  </h3>
+                  {filter === 'upcoming' && (
+                    <p className="text-sm text-muted-foreground">
+                      Use New meal to ask who’s joining.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          {(meals.length > 0 || selected) && (
+            <div
+              className={
+                selected && meals.length
+                  ? 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]'
+                  : 'space-y-4'
+              }
+            >
+              {meals.length > 0 && (
+                <Card className={selected ? 'max-lg:hidden' : undefined}>
+                  <CardContent className="space-y-2">
+                    {meals.map((meal) => {
+                      const needsReply =
+                        meal.canRespond &&
+                        meal.participants.some(
+                          (person) =>
+                            person.memberId === meal.viewerMemberId &&
+                            person.response === null,
+                        );
+                      return (
+                        <button
+                          key={meal.id}
+                          type="button"
+                          disabled={
+                            saving || editingRoles || browser.detailLoading
+                          }
+                          aria-current={
+                            selectedId === meal.id ? 'true' : undefined
+                          }
+                          onClick={(event) => {
+                            activeRow.current = event.currentTarget;
+                            setError('');
+                            setNotice('');
+                            void open(meal.id);
+                          }}
+                          className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left hover:bg-muted/40 ${selectedId === meal.id ? 'border-primary bg-primary/5' : 'border-border'}`}
+                        >
+                          <span className="design-item-icon green shrink-0">
+                            <UtensilsCrossed size={18} aria-hidden="true" />
+                          </span>
+                          <span className="min-w-0 flex-1 space-y-1">
+                            <strong className="block break-words">
+                              {meal.question}
+                            </strong>
+                            <span className="block text-xs text-muted-foreground">
+                              <span className="capitalize">
+                                {meal.mealType}
+                              </span>{' '}
+                              ·{' '}
+                              <time dateTime={meal.startsAt}>
+                                {time(meal.startsAt, meal.timezone)}
+                              </time>
+                            </span>
+                            <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                              <span>{meal.counts.joining} joining</span>
+                              {needsReply && (
+                                <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
+                                  Reply needed
+                                </span>
+                              )}
+                            </span>
+                          </span>
+                          <ChevronRight
+                            size={16}
+                            className="shrink-0 text-muted-foreground"
+                            aria-hidden="true"
+                          />
+                        </button>
+                      );
+                    })}
+                    {browser.hasMore && (
+                      <Button
+                        variant="outline"
+                        onClick={() => void browser.loadMore()}
+                        disabled={
+                          browser.loadingMore || browser.loading || editingRoles
+                        }
+                      >
+                        {browser.loadingMore ? 'Loading…' : 'Load more meals'}
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+              {selected && (
+                <Card ref={detailRef} tabIndex={-1} className="scroll-mt-6">
+                  <CardHeader>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="mb-2 self-start"
+                      disabled={saving || editingRoles}
+                      onClick={closeDetail}
+                    >
+                      Back to meals
+                    </Button>
+                    <span className="eyebrow">
+                      {selected.mealType.toUpperCase()}
+                    </span>
+                    <CardTitle>{selected.question}</CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                      <CalendarDays
+                        size={15}
+                        className="mr-1 inline"
+                        aria-hidden="true"
+                      />
+                      {time(selected.startsAt, selected.timezone)} ·{' '}
+                      {selected.timezone}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Answer by{' '}
+                      {time(selected.responseDeadline, selected.timezone)} ·
+                      Created by {selected.creatorDisplayName}
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="rounded-xl bg-muted/40 p-4">
+                      <h3 className="mb-2 font-semibold">Responses</h3>
+                      <p className="text-sm">
+                        {selected.counts.joining} joining ·{' '}
+                        {selected.counts.notJoining} not joining ·{' '}
+                        {selected.counts.maybe} maybe ·{' '}
+                        {selected.counts.awaiting} waiting
+                      </p>
+                      <ul className="mt-3 divide-y text-sm">
+                        {selected.participants.map((person) => (
+                          <li
+                            key={person.memberId}
+                            className="flex justify-between gap-2 py-2"
+                          >
+                            <span>{person.displayName}</span>
+                            <span className="text-muted-foreground">
+                              {person.response?.replace('_', ' ') ??
+                                'Awaiting answer'}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                      {selected.canRespond ? (
+                        <fieldset
+                          className="mt-3 flex flex-wrap gap-2"
+                          disabled={saving || editingRoles}
+                        >
+                          <legend className="mb-2 text-sm font-medium">
+                            Your reply
+                          </legend>
+                          {(
+                            [
+                              ['joining', 'Joining'],
+                              ['not_joining', 'Not joining'],
+                              ['maybe', 'Maybe'],
+                            ] as const
+                          ).map(([value, label]) => (
+                            <Button
+                              key={value}
+                              type="button"
+                              variant={
+                                myResponse === value ? 'default' : 'outline'
+                              }
+                              aria-pressed={myResponse === value}
+                              onClick={() => void answer(value)}
+                            >
+                              {label}
+                            </Button>
+                          ))}
+                        </fieldset>
+                      ) : (
+                        <p className="mt-3 text-sm text-muted-foreground">
+                          {new Date(selected.responseDeadline).getTime() <=
+                          Date.now()
+                            ? 'Responses are closed.'
+                            : 'You are not selected to answer this meal check.'}
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-3 border-t pt-5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="font-semibold">Cooking roles</h3>
+                        {!editingRoles && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={saving || browser.detailLoading}
+                            onClick={editRoles}
+                          >
+                            Edit cooking roles
+                          </Button>
+                        )}
+                      </div>
+                      {!editingRoles &&
+                        (selected.cookingRoles.length ? (
+                          <ul className="space-y-1 text-sm">
+                            {selected.cookingRoles.map((role) => (
+                              <li key={`${role.memberId}:${role.role}`}>
+                                <ChefHat
+                                  size={15}
+                                  className="mr-2 inline"
+                                  aria-hidden="true"
+                                />
+                                {role.displayName} · {role.role}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            No cooking roles assigned yet.
+                          </p>
+                        ))}
+                      {editingRoles && (
+                        <fieldset
+                          className="min-w-0 space-y-3"
+                          disabled={saving}
+                        >
+                          <legend className="sr-only">
+                            Edit cooking roles
+                          </legend>
+                          <div className="flex flex-wrap gap-2">
+                            <select
+                              aria-label="Member for cooking role"
+                              className="h-10 rounded-md border bg-background px-3"
+                              value={detailRoleMemberId}
+                              onChange={(event) =>
+                                setDetailRoleMemberId(event.target.value)
+                              }
+                            >
+                              <option value="">Choose member</option>
+                              {selected.participants.map((person) => (
+                                <option
+                                  key={person.memberId}
+                                  value={person.memberId}
+                                >
+                                  {person.displayName}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              aria-label="Role name"
+                              className="h-10 rounded-md border bg-background px-3"
+                              maxLength={60}
+                              value={detailRoleLabel}
+                              onChange={(event) =>
+                                setDetailRoleLabel(event.target.value)
+                              }
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() =>
+                                addRole(
+                                  roles,
+                                  setRoles,
+                                  detailRoleMemberId,
+                                  detailRoleLabel,
+                                )
+                              }
+                            >
+                              Add role
+                            </Button>
+                          </div>
+                          {roles.map((role, index) => (
+                            <div
+                              key={`${role.memberId}:${role.role}`}
+                              className="flex items-center gap-2 text-sm"
+                            >
+                              {roleName(role.memberId)} · {role.role}
+                              <button
+                                type="button"
+                                className="text-primary underline"
+                                onClick={() =>
+                                  setRoles(roles.filter((_, i) => i !== index))
+                                }
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => {
+                                setEditingRoles(false);
+                                setError('');
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              type="button"
+                              onClick={() => void saveRoles()}
+                            >
+                              {saving ? 'Saving…' : 'Save cooking roles'}
+                            </Button>
+                          </div>
+                        </fieldset>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

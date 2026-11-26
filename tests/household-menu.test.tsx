@@ -22,7 +22,7 @@ function props() {
     onSelectHousehold: vi.fn(),
     onCreateHousehold: vi.fn(),
     onJoinInvite: vi.fn(),
-    settingsHref: '/profile?household=home#household-settings',
+    settingsHref: '/settings?household=home#household-settings',
   };
 }
 function Draft({ active }: { active: boolean }) {

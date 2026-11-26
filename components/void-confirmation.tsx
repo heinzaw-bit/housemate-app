@@ -120,6 +120,8 @@ export function VoidConfirmation<T extends VoidRecord>({
 
   const money = (amount: number) =>
     `${formatCurrency(amount, record.currency)} ${record.currency}`;
+  const effects =
+    preview?.expectedBalanceEffects ?? preview?.balanceEffects ?? [];
   return (
     <section
       className="space-y-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm"
@@ -131,7 +133,7 @@ export function VoidConfirmation<T extends VoidRecord>({
       <p className="text-muted-foreground">
         This will void the {kind}. It will remain in history with your reason.{' '}
         {pendingBill
-          ? 'It will leave pending bills without changing member balances.'
+          ? 'Its planned payer credit and allocated shares will be removed from combined member balances.'
           : 'Its shares will no longer count toward member balances.'}{' '}
         Recorded settlements remain unchanged. You cannot edit it after voiding.
         {kind === 'bill' && ' Its provider status cannot be changed.'}
@@ -158,11 +160,13 @@ export function VoidConfirmation<T extends VoidRecord>({
       {preview && (
         <div className="space-y-2 rounded-lg border border-border bg-background p-3">
           <p className="font-medium">
-            Balance effect based on current records:
+            {preview.expectedBalanceEffects
+              ? 'Balance effect (includes unpaid bills):'
+              : 'Confirmed balance effect:'}
           </p>
-          {preview.balanceEffects.length ? (
+          {effects.length ? (
             <ul className="space-y-1">
-              {preview.balanceEffects.map((effect) => (
+              {effects.map((effect) => (
                 <li
                   key={effect.memberId}
                   className="flex flex-wrap justify-between gap-2"
@@ -175,7 +179,11 @@ export function VoidConfirmation<T extends VoidRecord>({
               ))}
             </ul>
           ) : (
-            <p className="text-muted-foreground">No member balance changes.</p>
+            <p className="text-muted-foreground">
+              {preview.expectedBalanceEffects
+                ? 'No combined balance changes.'
+                : 'No confirmed balance changes.'}
+            </p>
           )}
           {preview.pendingBillCountBefore !== preview.pendingBillCountAfter && (
             <p>

@@ -15,9 +15,11 @@ const auth = vi.hoisted(() => ({
   configured: true,
   error: '',
 }));
+const router = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(window.location.search),
   usePathname: () => window.location.pathname,
+  useRouter: () => router,
 }));
 vi.mock('../lib/auth-context', () => ({ useAuth: () => auth }));
 vi.mock('../components/workspace', () => ({
@@ -207,7 +209,14 @@ test('main tab navigation keeps the shell node and avoids repeating account read
   const shellNode = await screen.findByText('Account: account-a');
   const count = vi.mocked(api.getMe).mock.calls.length;
   const memberships = vi.mocked(api.getHouseholds).mock.calls.length;
-  for (const path of ['/money', '/house', '/assistant', '/profile', '/']) {
+  for (const path of [
+    '/money',
+    '/house',
+    '/assistant',
+    '/profile',
+    '/settings',
+    '/',
+  ]) {
     window.history.replaceState(null, '', `${path}?household=home`);
     view.rerender(
       <AppShell>
@@ -221,6 +230,30 @@ test('main tab navigation keeps the shell node and avoids repeating account read
   expect(api.getMe).toHaveBeenCalledTimes(count);
   expect(api.getHouseholds).toHaveBeenCalledTimes(memberships);
   expect(screen.queryByText('Public landing')).toBeNull();
+});
+
+test('an older Profile household settings link keeps its household on the new route', () => {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+  window.history.replaceState(
+    null,
+    '',
+    '/profile?household=home#household-settings',
+  );
+  render(
+    <AppShell>
+      <p>Public landing</p>
+    </AppShell>,
+  );
+  expect(router.replace).toHaveBeenCalledWith(
+    '/settings?household=home#household-settings',
+  );
 });
 
 test('a changed household URL never displays a different household as its fallback', async () => {

@@ -4,7 +4,7 @@ import { Dialog } from '@base-ui/react/dialog';
 import { Menu } from '@base-ui/react/menu';
 import { Check, ChevronDown, Link2, Plus, Settings, X } from 'lucide-react';
 import Link from 'next/link';
-import { useId, useRef, useState } from 'react';
+import { type MouseEvent, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { Household } from '@/lib/api';
@@ -19,7 +19,6 @@ export function HouseholdMenu({
   onCreateHousehold,
   onJoinInvite,
   settingsHref,
-  onOpenSettings,
   busy = false,
   preview = false,
   mobile = false,
@@ -30,7 +29,6 @@ export function HouseholdMenu({
   onCreateHousehold?: () => void;
   onJoinInvite?: (token: string) => void;
   settingsHref: string;
-  onOpenSettings?: () => void;
   busy?: boolean;
   preview?: boolean;
   mobile?: boolean;
@@ -41,6 +39,7 @@ export function HouseholdMenu({
   const [error, setError] = useState('');
   const id = useId();
   const trigger = useRef<HTMLButtonElement | null>(null);
+  const settingsFocus = useRef<HTMLElement | false | null>(null);
   useLeaveGuard(joinOpen && !!invite.trim());
 
   function canNavigate() {
@@ -78,6 +77,21 @@ export function HouseholdMenu({
     setOpen(next);
     setError('');
   }
+  function openSettings(event: MouseEvent<HTMLAnchorElement>) {
+    if (busy || !canNavigate()) {
+      event.preventDefault();
+      return;
+    }
+    const { hash } = new URL(settingsHref, window.location.href);
+    settingsFocus.current = document.getElementById(hash.slice(1)) ?? false;
+    setOpen(false);
+  }
+  function finalFocus() {
+    if (joinOpen) return false;
+    const target = settingsFocus.current;
+    settingsFocus.current = null;
+    return target ?? trigger.current;
+  }
   const card = (
     <>
       <span className={styles.monogram} aria-hidden="true">
@@ -106,7 +120,7 @@ export function HouseholdMenu({
             <Dialog.Backdrop className={styles.backdrop} />
             <Dialog.Popup
               className={`${styles.sheet} ${styles.surface}`}
-              finalFocus={joinOpen ? false : trigger}
+              finalFocus={finalFocus}
             >
               <div className={styles.heading}>
                 <Dialog.Title>Your households</Dialog.Title>
@@ -159,13 +173,7 @@ export function HouseholdMenu({
                 <Link
                   className={styles.item}
                   href={settingsHref}
-                  onClick={(event) => {
-                    if (busy || !canNavigate()) event.preventDefault();
-                    else {
-                      setOpen(false);
-                      onOpenSettings?.();
-                    }
-                  }}
+                  onClick={openSettings}
                 >
                   <Settings size={18} aria-hidden="true" />
                   Household settings
@@ -203,7 +211,7 @@ export function HouseholdMenu({
               <Menu.Popup
                 className={`${styles.menu} ${styles.surface}`}
                 aria-label="Your households"
-                finalFocus={joinOpen ? false : trigger}
+                finalFocus={finalFocus}
               >
                 <p className={styles.menuTitle}>Your households</p>
                 <Menu.RadioGroup value={household.id}>
@@ -248,13 +256,7 @@ export function HouseholdMenu({
                   render={<Link href={settingsHref} />}
                   aria-disabled={busy || undefined}
                   closeOnClick={false}
-                  onClick={(event) => {
-                    if (busy || !canNavigate()) event.preventDefault();
-                    else {
-                      setOpen(false);
-                      onOpenSettings?.();
-                    }
-                  }}
+                  onClick={openSettings}
                 >
                   <Settings size={18} aria-hidden="true" />
                   Household settings

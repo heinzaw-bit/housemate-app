@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { createExpense, getBalances, previewExpense } from '../lib/api';
+import {
+  createExpense,
+  getBalances,
+  previewExpense,
+  setBillStatus,
+} from '../lib/api';
 import {
   clearRecentReads,
   householdReadPath,
@@ -117,4 +122,26 @@ test('a read started before confirmation cannot be shared with a new read or rev
   finish(new Response(JSON.stringify({ old: true })));
   await old;
   expect(recentRead('session', path)?.value).toEqual({});
+});
+
+test('bill status broadcasts a household refresh signal only after a successful save', async () => {
+  const otherTab = new BroadcastChannel('housemate:bill-updates');
+  const messages: unknown[] = [];
+  otherTab.onmessage = (event) => messages.push(event.data);
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(new Response('{"paymentStatus":"paid"}')),
+  );
+  try {
+    await expect(
+      setBillStatus('session', 'failed-home', 'bill', 'paid'),
+    ).rejects.toMatchObject({ status: 503 });
+    await setBillStatus('session', 'home', 'bill', 'paid');
+    await vi.waitFor(() => expect(messages).toEqual(['home']));
+  } finally {
+    otherTab.close();
+  }
 });

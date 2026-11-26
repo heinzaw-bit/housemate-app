@@ -3687,13 +3687,6 @@ input[type="radio"] {
 .board-create-short {
   display: none;
 }
-.board-record-status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
 @media (max-width: 650px) {
   .board-create-full {
     display: none;

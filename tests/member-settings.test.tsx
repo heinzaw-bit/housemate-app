@@ -45,6 +45,7 @@ function props() {
     me,
     household: home,
     token: 'token',
+    settingsHref: '/settings?household=home',
     onMeUpdated: vi.fn(),
     onHouseholdUpdated: vi.fn(),
     onSwitchAccount: vi.fn(),
@@ -70,39 +71,41 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test('tabs show one section, hide account email by default, support keyboard and link notification settings to this household', async () => {
-  const user = userEvent.setup();
-  render(<MemberSettings {...props()} />);
-  const profile = screen.getByRole('tab', { name: 'My profile' });
-  expect(profile.getAttribute('aria-selected')).toBe('true');
-  expect(screen.queryByRole('textbox', { name: 'Display name' })).toBeNull();
-  expect(
-    screen.getByText(me.email).closest('details')?.hasAttribute('open'),
-  ).toBe(false);
-  profile.focus();
-  await user.keyboard('{ArrowRight}{Enter}');
-  expect(
-    screen
-      .getByRole('tab', { name: 'Household' })
-      .getAttribute('aria-selected'),
-  ).toBe('true');
-  await screen.findByText('Hein');
-  expect(screen.queryByText(member.email)).toBeNull();
-  await user.click(screen.getByRole('tab', { name: 'Preferences' }));
+test('Profile shows account controls and links to Settings for the selected household', async () => {
+  const view = render(<MemberSettings {...props()} />);
+  expect(screen.getByRole('heading', { name: 'Profile' })).toBeTruthy();
   expect(
     screen.getByRole('link', { name: 'Settings' }).getAttribute('href'),
+  ).toBe('/settings?household=home');
+  expect(screen.queryByRole('textbox', { name: 'Display name' })).toBeNull();
+  expect(screen.getByText(me.email).closest('details')?.open).toBe(false);
+  expect(screen.queryByRole('heading', { name: 'App and device' })).toBeNull();
+  expect(api.getMembers).not.toHaveBeenCalled();
+  expect(api.getInvites).not.toHaveBeenCalled();
+  const options = {
+    rules: { 'color-contrast': { enabled: false }, region: { enabled: false } },
+  };
+  expect((await axe.run(document.body, options)).violations).toEqual([]);
+
+  view.rerender(<MemberSettings {...props()} page="settings" />);
+  expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'App and device' })).toBeTruthy();
+  expect(
+    screen
+      .getByRole('link', { name: 'Notification settings' })
+      .getAttribute('href'),
   ).toBe('/notifications?household=home&view=settings');
   expect(
     screen.getByRole('region', { name: 'Install HouseMate' }),
   ).toBeTruthy();
-  expect(screen.queryByRole('button', { name: 'Invite someone' })).toBeNull();
-  const result = await axe.run(document.body, {
-    rules: { 'color-contrast': { enabled: false }, region: { enabled: false } },
-  });
-  expect(result.violations).toEqual([]);
+  expect(screen.getByText('Locked after financial activity.')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
+  await screen.findByText('Hein');
+  expect(screen.queryByText(member.email)).toBeNull();
+  expect((await axe.run(document.body, options)).violations).toEqual([]);
 });
 
-test('editing requires changes, blocks section/account changes, cancels without a write and saves only on submission', async () => {
+test('editing requires changes, blocks Settings navigation and account changes, and only saves on submission', async () => {
   const user = userEvent.setup();
   const p = props();
   render(
@@ -111,7 +114,7 @@ test('editing requires changes, blocks section/account changes, cancels without 
       <a href="/money?household=home">Money navigation</a>
     </>,
   );
-  const edit = screen.getByRole('button', { name: 'Edit' });
+  const edit = screen.getByRole('button', { name: 'Edit display name' });
   await user.click(edit);
   const input = screen.getByRole('textbox', { name: 'Display name' });
   expect(document.activeElement).toBe(input);
@@ -126,7 +129,7 @@ test('editing requires changes, blocks section/account changes, cancels without 
   expect(screen.getByRole('alert').textContent).toContain(
     'before leaving Profile',
   );
-  await user.click(screen.getByRole('tab', { name: 'Household' }));
+  await user.click(screen.getByRole('link', { name: 'Settings' }));
   expect(screen.getByRole('alert').textContent).toContain('Save or cancel');
   expect(screen.getByRole('textbox', { name: 'Display name' })).toBe(input);
   expect(
@@ -160,7 +163,7 @@ test('editing requires changes, blocks section/account changes, cancels without 
 test('failed saves keep the draft and prevent duplicate submissions while saving', async () => {
   const user = userEvent.setup();
   render(<MemberSettings {...props()} />);
-  await user.click(screen.getByRole('button', { name: 'Edit' }));
+  await user.click(screen.getByRole('button', { name: 'Edit display name' }));
   await user.type(
     screen.getByRole('textbox', { name: 'Display name' }),
     ' New',
@@ -194,16 +197,18 @@ test('failed saves keep the draft and prevent duplicate submissions while saving
   expect(api.updateMe).toHaveBeenCalledTimes(1);
 });
 
-test('settings deep links and same-route menu requests open Household; timezone search preserves currency restrictions and saves via API', async () => {
+test('the Household anchor focuses its group and timezone edits preserve currency restrictions', async () => {
   window.history.replaceState(
     null,
     '',
-    '/profile?household=home#household-settings',
+    '/settings?household=home#household-settings',
   );
   const user = userEvent.setup();
   const p = props();
-  const view = render(<MemberSettings {...p} />);
+  render(<MemberSettings {...p} page="settings" />);
   await screen.findByText('You own this household.');
+  const group = screen.getByRole('region', { name: 'Household' });
+  expect(document.activeElement).toBe(group);
   await user.click(screen.getByRole('button', { name: 'Edit' }));
   const currency = screen.getByRole('combobox', {
     name: 'Currency',
@@ -227,22 +232,18 @@ test('settings deep links and same-route menu requests open Household; timezone 
     name: 'Our home',
     timezone: 'Asia/Tokyo',
   });
-  await user.click(screen.getByRole('tab', { name: 'My profile' }));
-  view.rerender(<MemberSettings {...p} settingsRequest={1} />);
-  expect(
-    screen
-      .getByRole('tab', { name: 'Household' })
-      .getAttribute('aria-selected'),
-  ).toBe('true');
 });
 
 test('members see readable settings; admins can edit details but cannot change roles or currency', async () => {
   const user = userEvent.setup();
   const p = props();
   const view = render(
-    <MemberSettings {...p} household={{ ...home, role: 'member' }} />,
+    <MemberSettings
+      {...p}
+      page="settings"
+      household={{ ...home, role: 'member' }}
+    />,
   );
-  await user.click(screen.getByRole('tab', { name: 'Household' }));
   await screen.findByText('Hein');
   expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
   expect(screen.queryByRole('combobox')).toBeNull();
@@ -250,6 +251,7 @@ test('members see readable settings; admins can edit details but cannot change r
   view.rerender(
     <MemberSettings
       {...p}
+      page="settings"
       household={{ ...home, role: 'admin', currencyEditable: true }}
     />,
   );
@@ -264,8 +266,7 @@ test('members see readable settings; admins can edit details but cannot change r
 
 test('role selection prepares a review, cancel does not write, and explicit confirmation updates the role', async () => {
   const user = userEvent.setup();
-  render(<MemberSettings {...props()} />);
-  await user.click(screen.getByRole('tab', { name: 'Household' }));
+  render(<MemberSettings {...props()} page="settings" />);
   const select = await screen.findByRole('combobox', { name: 'Role for Hein' });
   await user.selectOptions(select, 'admin');
   expect(api.updateMemberRole).not.toHaveBeenCalled();
@@ -305,8 +306,7 @@ test('invitations separate active links from history; creation and revocation re
     { ...active, id: 'used', redeemedAt: '2026-02-01T00:00:00Z' },
   ]);
   const user = userEvent.setup();
-  render(<MemberSettings {...props()} />);
-  await user.click(screen.getByRole('tab', { name: 'Household' }));
+  render(<MemberSettings {...props()} page="settings" />);
   await screen.findByText('Active invitations (1)');
   expect(screen.getByText('Used').closest('ul')?.hidden).toBe(true);
   await user.click(screen.getByRole('button', { name: 'Show history (1)' }));
@@ -333,16 +333,16 @@ test('invitations separate active links from history; creation and revocation re
 test('preview uses the same layout without reading or mutating household records', async () => {
   const user = userEvent.setup();
   const p = props();
-  render(<MemberSettings {...p} preview />);
+  const view = render(<MemberSettings {...p} preview />);
   expect(
-    (screen.getByRole('button', { name: 'Edit' }) as HTMLButtonElement)
+    screen.getByRole<HTMLButtonElement>('button', { name: 'Edit display name' })
       .disabled,
   ).toBe(true);
-  await user.click(screen.getByRole('tab', { name: 'Household' }));
+  view.rerender(<MemberSettings {...p} page="settings" preview />);
   expect(screen.queryByRole('button', { name: 'Invite someone' })).toBeNull();
   expect(api.getMembers).not.toHaveBeenCalled();
   expect(api.getInvites).not.toHaveBeenCalled();
-  await user.click(screen.getByRole('tab', { name: 'My profile' }));
+  view.rerender(<MemberSettings {...p} preview />);
   await user.click(screen.getByRole('button', { name: 'Exit preview' }));
   expect(p.onSignOut).toHaveBeenCalledTimes(1);
 });
