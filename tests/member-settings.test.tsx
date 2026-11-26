@@ -74,11 +74,17 @@ afterEach(() => {
 test('Profile shows account controls and links to Settings for the selected household', async () => {
   const view = render(<MemberSettings {...props()} />);
   expect(screen.getByRole('heading', { name: 'Profile' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: me.displayName })).toBeTruthy();
+  expect(screen.getByText(/House owner/).textContent).toBe(
+    'Our home · House owner',
+  );
   expect(
     screen.getByRole('link', { name: 'Settings' }).getAttribute('href'),
   ).toBe('/settings?household=home');
   expect(screen.queryByRole('textbox', { name: 'Display name' })).toBeNull();
-  expect(screen.getByText(me.email).closest('details')?.open).toBe(false);
+  expect(screen.getByText(me.email).closest('dl')?.textContent).toContain(
+    'Sign-in email',
+  );
   expect(screen.queryByRole('heading', { name: 'App and device' })).toBeNull();
   expect(api.getMembers).not.toHaveBeenCalled();
   expect(api.getInvites).not.toHaveBeenCalled();
@@ -114,7 +120,7 @@ test('editing requires changes, blocks Settings navigation and account changes, 
       <a href="/money?household=home">Money navigation</a>
     </>,
   );
-  const edit = screen.getByRole('button', { name: 'Edit display name' });
+  const edit = screen.getByRole('button', { name: 'Edit name' });
   await user.click(edit);
   const input = screen.getByRole('textbox', { name: 'Display name' });
   expect(document.activeElement).toBe(input);
@@ -135,7 +141,7 @@ test('editing requires changes, blocks Settings navigation and account changes, 
   expect(
     (
       screen.getByRole('button', {
-        name: 'Switch Google account',
+        name: 'Switch account',
       }) as HTMLButtonElement
     ).disabled,
   ).toBe(true);
@@ -163,7 +169,7 @@ test('editing requires changes, blocks Settings navigation and account changes, 
 test('failed saves keep the draft and prevent duplicate submissions while saving', async () => {
   const user = userEvent.setup();
   render(<MemberSettings {...props()} />);
-  await user.click(screen.getByRole('button', { name: 'Edit display name' }));
+  await user.click(screen.getByRole('button', { name: 'Edit name' }));
   await user.type(
     screen.getByRole('textbox', { name: 'Display name' }),
     ' New',
@@ -335,7 +341,7 @@ test('preview uses the same layout without reading or mutating household records
   const p = props();
   const view = render(<MemberSettings {...p} preview />);
   expect(
-    screen.getByRole<HTMLButtonElement>('button', { name: 'Edit display name' })
+    screen.getByRole<HTMLButtonElement>('button', { name: 'Edit name' })
       .disabled,
   ).toBe(true);
   view.rerender(<MemberSettings {...p} page="settings" preview />);

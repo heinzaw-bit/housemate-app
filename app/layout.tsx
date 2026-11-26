@@ -9,6 +9,8 @@ import { themeInitScript } from '@/lib/theme';
 import { ThemeProvider } from '@/lib/theme-context';
 import './globals.css';
 import './workspace-design.css';
+// Load the scoped stylesheet on fresh visits to the lazy Profile and Settings views.
+import '@/components/member-settings.module.css';
 import localFont from 'next/font/local';
 import { cn } from '@/lib/utils';
 
