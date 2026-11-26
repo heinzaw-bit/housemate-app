@@ -416,6 +416,13 @@ export function MemberSettings({
     ]),
   ];
   const accountBusy = signingOut || switchingAccount;
+  const initials = me.displayName
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => Array.from(part)[0])
+    .join('')
+    .toUpperCase();
   return (
     <div className={`content-inner ${styles.page}`}>
       <header className="page-heading-row">
@@ -430,22 +437,25 @@ export function MemberSettings({
       )}
       {!isSettings ? (
         <div className={styles.panel}>
-          <div className={styles.identity}>
-            <span className={styles.avatar} aria-hidden="true">
-              {me.displayName.charAt(0).toUpperCase()}
-            </span>
-            <div>
-              <strong>{me.displayName}</strong>
-              <p>
-                {household.name} <span aria-hidden="true">·</span>{' '}
-                <span className="capitalize">{household.role}</span>
-              </p>
-            </div>
-            {preview && <Badge variant="secondary">Design preview</Badge>}
-          </div>
           <Card className={styles.card}>
-            <div className={styles.cardHeading}>
-              <h2>Display name</h2>
+            <div className={styles.profileSummary}>
+              <div className={styles.identity}>
+                <span className={styles.avatar} aria-hidden="true">
+                  {initials}
+                </span>
+                <div>
+                  <h2>{me.displayName}</h2>
+                  <p>
+                    {household.name} <span aria-hidden="true">·</span> House{' '}
+                    {household.role}
+                  </p>
+                  {preview && (
+                    <Badge className="mt-2" variant="secondary">
+                      Design preview
+                    </Badge>
+                  )}
+                </div>
+              </div>
               <Button
                 ref={profileEdit}
                 variant="outline"
@@ -453,10 +463,9 @@ export function MemberSettings({
                   setEditingProfile(true);
                   setProfileMessage('');
                 }}
-                aria-label="Edit display name"
                 disabled={editingProfile || preview || accountBusy}
               >
-                <Pencil size={16} aria-hidden="true" /> Edit
+                <Pencil size={16} aria-hidden="true" /> Edit name
               </Button>
             </div>
             {editingProfile && (
@@ -502,28 +511,13 @@ export function MemberSettings({
                   {profileMessage}
                 </p>
               ))}
-            <details className={styles.accountDetails}>
-              <summary>
-                Account details <ChevronDown size={16} aria-hidden="true" />
-              </summary>
-              <p>{me.email ?? 'No email address on this account'}</p>
-              <p className="field-help">
-                Your sign-in email is managed by your account provider.
-              </p>
-            </details>
-            <Link className={styles.navigationRow} href={settingsHref}>
-              <span className={styles.navigationLabel}>
-                <Settings size={18} aria-hidden="true" /> Settings
-              </span>
-              <ChevronRight size={18} aria-hidden="true" />
-            </Link>
           </Card>
           <Card className={styles.card}>
-            <div className={styles.cardHeading}>
-              <div>
-                <h2>Account</h2>
-              </div>
-            </div>
+            <h2>Account</h2>
+            <dl className={styles.signInEmail}>
+              <dt>Sign-in email</dt>
+              <dd>{me.email ?? 'No email address on this account'}</dd>
+            </dl>
             <div className={styles.actions}>
               <Button
                 variant="outline"
@@ -531,10 +525,10 @@ export function MemberSettings({
                 disabled={accountBusy || preview || !onSwitchAccount || pending}
               >
                 <ArrowRightLeft size={17} aria-hidden="true" />
-                {switchingAccount ? 'Switching…' : 'Switch Google account'}
+                {switchingAccount ? 'Switching…' : 'Switch account'}
               </Button>
               <Button
-                variant="ghost"
+                variant="outline"
                 onClick={onSignOut}
                 disabled={accountBusy || pending}
               >
@@ -563,6 +557,15 @@ export function MemberSettings({
               </p>
             )}
           </Card>
+          <Link
+            className={`${styles.card} ${styles.navigationRow} ${styles.mobileSettings}`}
+            href={settingsHref}
+          >
+            <span className={styles.navigationLabel}>
+              <Settings size={18} aria-hidden="true" /> Settings
+            </span>
+            <ChevronRight size={18} aria-hidden="true" />
+          </Link>
         </div>
       ) : (
         <div className={styles.panel}>

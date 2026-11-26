@@ -1,18 +1,26 @@
 .page {
   max-width: 960px;
 }
+.profileSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.profileSummary > button {
+  flex-shrink: 0;
+}
 .identity {
   display: flex;
   align-items: center;
   gap: 14px;
+  min-width: 0;
 }
 .identity > div {
   min-width: 0;
-  flex: 1;
 }
-.identity strong {
-  font-size: 19px;
-  overflow-wrap: anywhere;
+.card .identity h2 {
+  font-size: 22px;
 }
 .identity p {
   margin: 3px 0 0;
@@ -26,10 +34,10 @@
   flex-shrink: 0;
   width: 54px;
   height: 54px;
-  border-radius: 18px;
-  background: var(--accent);
-  color: var(--accent-foreground);
-  font-size: 24px;
+  border-radius: 50%;
+  background: var(--design-mint);
+  color: var(--primary);
+  font-size: 20px;
   font-weight: 800;
 }
 .panel,
@@ -135,30 +143,19 @@
   gap: 10px;
   margin-top: 8px;
 }
-.accountDetails {
-  margin-top: 12px;
-  border-top: 1px solid var(--border);
-  padding-top: 8px;
-}
-.accountDetails summary {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  min-height: 44px;
-  cursor: pointer;
+.signInEmail {
+  margin: 12px 0 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
   font-size: 14px;
+}
+.signInEmail dt {
+  color: var(--muted-foreground);
+}
+.signInEmail dd {
+  margin: 3px 0 0;
   font-weight: 650;
-  list-style: none;
-}
-.accountDetails summary::-webkit-details-marker {
-  display: none;
-}
-.accountDetails[open] summary svg {
-  transform: rotate(180deg);
-}
-.accountDetails p {
   overflow-wrap: anywhere;
-  font-size: 14px;
 }
 .memberList,
 .invites {
@@ -304,10 +301,8 @@ a.navigationRow:hover {
   font-size: 14px;
   font-weight: 650;
 }
-.accountDetails + .navigationRow {
-  margin-top: 6px;
-  border-top: 1px solid var(--border);
-  border-radius: 0;
+.mobileSettings {
+  display: none;
 }
 .settingSummary {
   color: var(--muted-foreground);
@@ -327,12 +322,16 @@ a.navigationRow:hover {
 .install > section > h2 {
   font-size: 1rem;
 }
-@media (max-width: 600px) {
-  .identity {
-    flex-wrap: wrap;
+@media (max-width: 900px) {
+  .mobileSettings {
+    display: flex;
+    padding-block: 14px;
   }
-  .identity > div {
-    flex-basis: calc(100% - 68px);
+}
+@media (max-width: 600px) {
+  .profileSummary {
+    flex-direction: column;
+    align-items: stretch;
   }
   .card {
     padding: 20px;
