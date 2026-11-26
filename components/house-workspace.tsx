@@ -164,7 +164,7 @@ export function HouseWorkspace({
           <div className="board-heading">
             <span className="eyebrow">OUR HOUSE</span>
             <div className="board-title-row">
-              <h1>House</h1>
+              <h1>Board</h1>
               {view && createLabel && (
                 <Button
                   type="button"

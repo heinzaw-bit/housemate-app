@@ -67,7 +67,7 @@ export function HouseTools({
   disabled?: boolean;
 }) {
   return (
-    <nav className="design-tool-grid" aria-label="House sections">
+    <nav className="design-tool-grid" aria-label="Board sections">
       {houseTools.map(({ id, title, detail, icon: Icon, tone }) => (
         <button
           type="button"

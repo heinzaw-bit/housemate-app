@@ -211,7 +211,7 @@ async function openTool(name: string) {
   await act(async () => fireEvent.click(screen.getByRole('button', { name })));
 }
 
-test('Polls uses the House header to open and refocus its draft and refreshes on return', async () => {
+test('Polls uses the Board header to open and refocus its draft and refreshes on return', async () => {
   const visibility = vi
     .spyOn(document, 'visibilityState', 'get')
     .mockReturnValue('visible');
@@ -220,9 +220,9 @@ test('Polls uses the House header to open and refocus its draft and refreshes on
     await openTool('Polls');
     await screen.findByText('No polls in this view yet.');
     const titleRow = screen.getByRole('heading', {
-      name: 'House',
+      name: 'Board',
     }).parentElement;
-    if (!titleRow) throw new Error('House title row is missing');
+    if (!titleRow) throw new Error('Board title row is missing');
     const create = within(titleRow).getByRole('button', { name: 'New poll' });
     expect(screen.getAllByRole('button', { name: 'New poll' })).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Refresh polls' })).toBeNull();
@@ -480,7 +480,7 @@ test('chores opens on assignments and keeps creation and completion in their own
   ).toBe('true');
 });
 
-test('Meals opens with a list and lets a member publish through the House header', async () => {
+test('Meals opens with a list and lets a member publish through the Board header', async () => {
   vi.mocked(api.getMembers).mockResolvedValue([
     {
       id: 'one',
@@ -630,9 +630,9 @@ test('a meal notification opens its record even when it is outside the first lis
   expect(screen.getByText('Responses are closed.')).toBeTruthy();
 });
 
-test('House opens with six unselected tools until a member chooses one', async () => {
+test('Board opens with six unselected tools until a member chooses one', async () => {
   const page = render(<HouseWorkspace household={household} token="session" />);
-  const nav = screen.getByRole('navigation', { name: 'House sections' });
+  const nav = screen.getByRole('navigation', { name: 'Board sections' });
   expect(
     within(nav)
       .getAllByRole('button')

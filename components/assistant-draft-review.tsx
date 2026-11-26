@@ -457,7 +457,7 @@ function CommunicationDraftReview({
                     {draft.timezone}
                   </p>
                   <p>
-                    Cooking roles can be assigned after publication in House.
+                    Cooking roles can be assigned after publication in Board.
                   </p>
                 </>
               ) : (
