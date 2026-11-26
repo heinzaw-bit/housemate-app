@@ -75,7 +75,7 @@ export type Section =
 const navItems = [
   { href: '/', label: 'Home', section: 'home', icon: Home },
   { href: '/money', label: 'Money', section: 'money', icon: WalletCards },
-  { href: '/house', label: 'House', section: 'house', icon: UsersRound },
+  { href: '/house', label: 'Board', section: 'house', icon: UsersRound },
   {
     href: '/assistant',
     label: 'Assistant',
@@ -475,7 +475,7 @@ function HouseSection({ household }: { household: Household }) {
       <div className="page-heading-row">
         <div>
           <span className="eyebrow">OUR HOUSE</span>
-          <h1>House</h1>
+          <h1>Board</h1>
           <p>Plans, tasks, and the everyday things you share.</p>
         </div>
       </div>
