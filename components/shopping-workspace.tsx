@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, Pencil, RefreshCw, ShoppingBasket, X } from 'lucide-react';
+import { Check, Pencil, ShoppingBasket, X } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SuccessNotice } from '@/components/success-notice';
@@ -29,7 +29,11 @@ import {
 } from '@/lib/api';
 import { confirmationFailure } from '@/lib/financial-confirmation';
 import { useLeaveGuard } from '@/lib/pending-work';
+import { useHouseRecords } from '@/lib/use-house-records';
+import { RecordRefreshButton } from './communication-parts';
+import { HouseTaskRow, useHouseTaskFocus } from './house-task-list';
 import { SavedDraftNotice, useSavedDraft } from './saved-draft';
+import { WorkspaceLoading } from './workspace-loading';
 
 function parseMoney(value: string): number | null {
   const clean = value.trim();
@@ -61,6 +65,16 @@ function errorText(error: unknown): string {
     : 'Something went wrong. Please try again.';
 }
 
+function loadPage(
+  token: string,
+  householdId: string,
+  _scope: 'all',
+  limit: number,
+  offset: number,
+) {
+  return getShoppingItems(token, householdId, limit, offset);
+}
+
 export function ShoppingWorkspace({
   household,
   token,
@@ -76,14 +90,13 @@ export function ShoppingWorkspace({
   createRequest?: number;
   onHouseChanged?: () => void;
 }) {
-  const [items, setItems] = useState<ShoppingItem[]>([]);
   const [members, setMembers] = useState<HouseholdMember[]>([]);
-  const [selectedId, setSelectedId] = useState('');
   const [filter, setFilter] = useState<'needed' | 'history'>('needed');
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
+  const [loadingMembers, setLoadingMembers] = useState(true);
+  const [memberError, setMemberError] = useState('');
+  const memberRequest = useRef(0);
+  const handledCreate = useRef(0);
+  const handledLink = useRef(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -96,9 +109,13 @@ export function ShoppingWorkspace({
   const [priority, setPriority] = useState<ShoppingDraft['priority']>('normal');
   const [buyer, setBuyer] = useState('');
   const [estimate, setEstimate] = useState('');
-  const [cancelConfirm, setCancelConfirm] = useState(false);
-  const [purchasing, setPurchasing] = useState(false);
-  useLeaveGuard(formOpen || purchasing);
+  const [cancelTarget, setCancelTarget] = useState<ShoppingItem | null>(null);
+  const [purchaseTarget, setPurchaseTarget] = useState<ShoppingItem | null>(
+    null,
+  );
+  const cancelConfirm = cancelTarget !== null;
+  const purchasing = purchaseTarget !== null;
+  useLeaveGuard(formOpen || purchasing || cancelConfirm || busy);
   const [actualPrice, setActualPrice] = useState('');
   const [addExpense, setAddExpense] = useState(false);
   const [payerId, setPayerId] = useState('');
@@ -112,7 +129,30 @@ export function ShoppingWorkspace({
   const [previewDraft, setPreviewDraft] = useState<ExpenseDraft | null>(null);
   const [retryKey, setRetryKey] = useState('');
   const previewGeneration = useRef(0);
-  const selected = items.find((item) => item.id === selectedId) ?? null;
+  const browser = useHouseRecords({
+    token,
+    householdId: household.id,
+    scope: 'all',
+    loadPage,
+    getRecord: getShoppingItem,
+    focusedId,
+    focusSignal,
+    pauseRefresh: formOpen || purchasing || cancelConfirm || busy,
+  });
+  const {
+    records: items,
+    selected: selectedRecord,
+    loading,
+    hasMore,
+    loadingMore,
+    open,
+    close,
+    accept,
+  } = browser;
+  const selected = purchaseTarget ?? cancelTarget ?? selectedRecord;
+  const focus = useHouseTaskFocus(formOpen, createRequest, selected?.id);
+  const selectedId = selected?.id;
+
   const money = (value: number, currency = household.defaultCurrency) =>
     `${formatCurrency(value, currency)} ${currency}`;
 
@@ -133,38 +173,38 @@ export function ShoppingWorkspace({
     },
   });
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const loadMembers = useCallback(async () => {
+    const request = ++memberRequest.current;
+    setLoadingMembers(true);
+    setMemberError('');
     try {
-      const [nextItems, nextMembers] = await Promise.all([
-        getShoppingItems(token, household.id),
-        getMembers(token, household.id),
-      ]);
-      setItems((current) => [
-        ...nextItems,
-        ...current.filter(
-          (item) =>
-            item.id === focusedId &&
-            !nextItems.some((next) => next.id === item.id),
-        ),
-      ]);
-      setMembers(nextMembers);
-      setHasMore(nextItems.length === 50);
-      setSelectedId((current) => current || nextItems[0]?.id || '');
+      const next = await getMembers(token, household.id);
+      if (request !== memberRequest.current) return;
+      setMembers(next);
     } catch (failure) {
-      setItems([]);
+      if (request !== memberRequest.current) return;
       setMembers([]);
-      setError(errorText(failure));
+      setMemberError(errorText(failure));
     } finally {
-      setLoading(false);
+      if (request === memberRequest.current) setLoadingMembers(false);
     }
-  }, [household.id, token, focusedId]);
+  }, [token, household.id]);
+
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadMembers();
+    return () => {
+      memberRequest.current += 1;
+    };
+  }, [loadMembers]);
+
   useEffect(() => {
-    if (!createRequest) return;
+    if (!createRequest || createRequest === handledCreate.current) return;
+    handledCreate.current = createRequest;
+    if (busy || purchasing || cancelConfirm) {
+      setError('Finish or cancel the open action before adding an item.');
+      return;
+    }
+    if (formOpen) return;
     setEditing(null);
     setTitle('');
     setQuantity('');
@@ -173,42 +213,27 @@ export function ShoppingWorkspace({
     setPriority('normal');
     setBuyer('');
     setEstimate('');
-    setPurchasing(false);
-    setCancelConfirm(false);
+    setError('');
+    setNotice('');
     setFormOpen(true);
-  }, [createRequest]);
-  useEffect(() => {
-    if (!focusedId || !focusSignal) return;
-    let active = true;
-    void getShoppingItem(token, household.id, focusedId).then(
-      (item) => {
-        if (!active) return;
-        setItems((current) => [
-          item,
-          ...current.filter((old) => old.id !== item.id),
-        ]);
-        setSelectedId(item.id);
-        setFilter(
-          item.status === 'needed' || item.status === 'assigned'
-            ? 'needed'
-            : 'history',
-        );
-        setDetailOpen(true);
-      },
-      (failure) => {
-        if (active) setError(errorText(failure));
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [focusedId, focusSignal, household.id, token]);
+  }, [createRequest, busy, purchasing, cancelConfirm, formOpen]);
 
-  function replaceItem(item: ShoppingItem) {
-    setItems((current) =>
-      current.map((old) => (old.id === item.id ? item : old)),
+  useEffect(() => {
+    if (
+      !focusSignal ||
+      handledLink.current === focusSignal ||
+      selected?.id !== focusedId ||
+      !selected
+    )
+      return;
+    handledLink.current = focusSignal;
+    setFilter(
+      selected.status === 'needed' || selected.status === 'assigned'
+        ? 'needed'
+        : 'history',
     );
-  }
+  }, [focusedId, focusSignal, selected]);
+
   function clearPurchasePreview() {
     previewGeneration.current += 1;
     setPreview(null);
@@ -225,8 +250,8 @@ export function ShoppingWorkspace({
     setBuyer(item?.assignedBuyerMemberId ?? '');
     setEstimate(amountInput(item?.estimatedPriceMinor ?? null));
     setFormOpen(true);
-    setPurchasing(false);
-    setCancelConfirm(false);
+    setPurchaseTarget(null);
+    setCancelTarget(null);
     setError('');
     setNotice('');
   }
@@ -284,12 +309,9 @@ export function ShoppingWorkspace({
             draft,
             savedDraft.confirmationKey(draft),
           );
-      setItems((current) => [
-        saved,
-        ...current.filter((item) => item.id !== saved.id),
-      ]);
+      accept(saved);
+      void browser.refresh(true);
       if (!editing) savedDraft.clear();
-      setSelectedId(saved.id);
       setFormOpen(false);
       setEditing(null);
       setNotice(editing ? 'Shopping item updated.' : 'Shopping item added.');
@@ -308,7 +330,7 @@ export function ShoppingWorkspace({
     setError('');
     setNotice('');
     try {
-      replaceItem(
+      accept(
         await cancelShoppingItem(
           token,
           household.id,
@@ -316,7 +338,7 @@ export function ShoppingWorkspace({
           selected.revision,
         ),
       );
-      setCancelConfirm(false);
+      setCancelTarget(null);
       setNotice('Item cancelled.');
       setFilter('history');
       onHouseChanged();
@@ -327,10 +349,9 @@ export function ShoppingWorkspace({
     }
   }
   function beginPurchase(item: ShoppingItem) {
-    setSelectedId(item.id);
-    setPurchasing(true);
+    setPurchaseTarget(item);
     setFormOpen(false);
-    setCancelConfirm(false);
+    setCancelTarget(null);
     setActualPrice(amountInput(item.estimatedPriceMinor));
     setAddExpense(false);
     setPayerId(item.viewerMemberId);
@@ -441,8 +462,8 @@ export function ShoppingWorkspace({
               selected.revision,
               amount,
             );
-      replaceItem(item);
-      setPurchasing(false);
+      accept(item);
+      setPurchaseTarget(null);
       clearPurchasePreview();
       setNotice(
         item.linkedExpenseId
@@ -452,8 +473,11 @@ export function ShoppingWorkspace({
       setFilter('history');
       onHouseChanged();
     } catch (failure) {
-      if (failure instanceof ApiRequestError && failure.code === 'STALE_ITEM')
+      if (failure instanceof ApiRequestError && failure.code === 'STALE_ITEM') {
         clearPurchasePreview();
+        setPurchaseTarget(null);
+        await browser.refresh(true);
+      }
       setError(
         confirmationFailure(
           failure,
@@ -463,27 +487,6 @@ export function ShoppingWorkspace({
       );
     } finally {
       setBusy(false);
-    }
-  }
-  async function loadMore() {
-    setLoadingMore(true);
-    setError('');
-    try {
-      const next = await getShoppingItems(
-        token,
-        household.id,
-        50,
-        items.length,
-      );
-      setItems((current) => [
-        ...current,
-        ...next.filter((item) => !current.some((old) => old.id === item.id)),
-      ]);
-      setHasMore(next.length === 50);
-    } catch (failure) {
-      setError(errorText(failure));
-    } finally {
-      setLoadingMore(false);
     }
   }
   const canChange =
@@ -505,17 +508,24 @@ export function ShoppingWorkspace({
       <SavedDraftNotice
         draft={savedDraft}
         disabled={busy}
-        resumeDisabled={loading || !members.length || !!editing}
+        resumeDisabled={loadingMembers || !members.length || !!editing}
       />
-      <div>
-        <h2 className="text-xl font-semibold">Shopping</h2>
-        <p className="text-sm text-muted-foreground">
-          What to buy, who is buying, and what is done.
-        </p>
-      </div>
-      {error && (
+      {(error || browser.error) && (
         <p role="alert" className="form-message error">
-          {error}
+          {error || browser.error}
+        </p>
+      )}
+      {memberError && (
+        <p role="alert" className="form-message error">
+          {memberError}{' '}
+          <Button
+            type="button"
+            variant="link"
+            disabled={loadingMembers}
+            onClick={() => void loadMembers()}
+          >
+            Retry members
+          </Button>
         </p>
       )}
       {notice && (
@@ -523,7 +533,7 @@ export function ShoppingWorkspace({
           {notice}
         </SuccessNotice>
       )}
-      {formOpen && (
+      {formOpen ? (
         <Card>
           <CardHeader>
             <CardTitle>
@@ -531,531 +541,591 @@ export function ShoppingWorkspace({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={saveItem} className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
+            <form onSubmit={saveItem} className="scroll-mt-6 space-y-4">
+              <fieldset disabled={busy} className="min-w-0 space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="grid gap-1 text-sm font-medium">
+                    Item name
+                    <input
+                      ref={focus.name}
+                      className="h-10 rounded-md border bg-background px-3"
+                      required
+                      maxLength={160}
+                      value={title}
+                      onChange={(event) => setTitle(event.target.value)}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium">
+                    Quantity (optional)
+                    <input
+                      className="h-10 rounded-md border bg-background px-3"
+                      type="number"
+                      min="0.001"
+                      max="999999999"
+                      step="0.001"
+                      value={quantity}
+                      onChange={(event) => setQuantity(event.target.value)}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium">
+                    Unit (optional)
+                    <input
+                      className="h-10 rounded-md border bg-background px-3"
+                      maxLength={40}
+                      placeholder="packs, kg, bottles"
+                      value={unit}
+                      onChange={(event) => setUnit(event.target.value)}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium">
+                    Priority
+                    <select
+                      className="h-10 rounded-md border bg-background px-3"
+                      value={priority}
+                      onChange={(event) =>
+                        setPriority(
+                          event.target.value as ShoppingDraft['priority'],
+                        )
+                      }
+                    >
+                      <option value="low">Low</option>
+                      <option value="normal">Normal</option>
+                      <option value="high">High</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium">
+                    Assign buyer (optional)
+                    <select
+                      className="h-10 rounded-md border bg-background px-3"
+                      value={buyer}
+                      onChange={(event) => setBuyer(event.target.value)}
+                    >
+                      <option value="">Nobody assigned</option>
+                      {members.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.displayName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium">
+                    Estimated price · {household.defaultCurrency} (optional)
+                    <input
+                      className="h-10 rounded-md border bg-background px-3"
+                      inputMode="decimal"
+                      value={estimate}
+                      onChange={(event) => setEstimate(event.target.value)}
+                      placeholder="0.00"
+                    />
+                  </label>
+                </div>
                 <label className="grid gap-1 text-sm font-medium">
-                  Item name
-                  <input
-                    className="h-10 rounded-md border bg-background px-3"
-                    required
-                    maxLength={160}
-                    value={title}
-                    onChange={(event) => setTitle(event.target.value)}
+                  Note (optional)
+                  <textarea
+                    className="min-h-20 rounded-md border bg-background p-3"
+                    maxLength={500}
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
                   />
                 </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Quantity (optional)
-                  <input
-                    className="h-10 rounded-md border bg-background px-3"
-                    type="number"
-                    min="0.001"
-                    max="999999999"
-                    step="0.001"
-                    value={quantity}
-                    onChange={(event) => setQuantity(event.target.value)}
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Unit (optional)
-                  <input
-                    className="h-10 rounded-md border bg-background px-3"
-                    maxLength={40}
-                    placeholder="packs, kg, bottles"
-                    value={unit}
-                    onChange={(event) => setUnit(event.target.value)}
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Priority
-                  <select
-                    className="h-10 rounded-md border bg-background px-3"
-                    value={priority}
-                    onChange={(event) =>
-                      setPriority(
-                        event.target.value as ShoppingDraft['priority'],
-                      )
-                    }
-                  >
-                    <option value="low">Low</option>
-                    <option value="normal">Normal</option>
-                    <option value="high">High</option>
-                  </select>
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Assign buyer (optional)
-                  <select
-                    className="h-10 rounded-md border bg-background px-3"
-                    value={buyer}
-                    onChange={(event) => setBuyer(event.target.value)}
-                  >
-                    <option value="">Nobody assigned</option>
-                    {members.map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.displayName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Estimated price · {household.defaultCurrency} (optional)
-                  <input
-                    className="h-10 rounded-md border bg-background px-3"
-                    inputMode="decimal"
-                    value={estimate}
-                    onChange={(event) => setEstimate(event.target.value)}
-                    placeholder="0.00"
-                  />
-                </label>
-              </div>
-              <label className="grid gap-1 text-sm font-medium">
-                Note (optional)
-                <textarea
-                  className="min-h-20 rounded-md border bg-background p-3"
-                  maxLength={500}
-                  value={note}
-                  onChange={(event) => setNote(event.target.value)}
-                />
-              </label>
-              <div className="flex gap-2">
+              </fieldset>
+              <div className="flex flex-wrap gap-2">
                 <Button type="submit" disabled={busy}>
                   {busy ? 'Saving…' : editing ? 'Save changes' : 'Add item'}
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
+                  disabled={busy}
                   onClick={() => {
                     if (!editing) savedDraft.clear();
                     setFormOpen(false);
                   }}
                 >
-                  Close
+                  Cancel
                 </Button>
               </div>
             </form>
           </CardContent>
         </Card>
-      )}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <fieldset className="flex flex-wrap gap-2">
-          <legend className="sr-only">Filter shopping items</legend>
-          <Button
-            variant={filter === 'needed' ? 'default' : 'outline'}
-            aria-pressed={filter === 'needed'}
-            onClick={() => {
-              setFilter('needed');
-              setSelectedId(groups.needed[0]?.id ?? '');
-              setDetailOpen(false);
-            }}
-          >
-            To buy
-          </Button>
-          <Button
-            variant={filter === 'history' ? 'default' : 'outline'}
-            aria-pressed={filter === 'history'}
-            onClick={() => {
-              setFilter('history');
-              setSelectedId(groups.history[0]?.id ?? '');
-              setDetailOpen(false);
-            }}
-          >
-            History
-          </Button>
-        </fieldset>
-        <Button
-          variant="outline"
-          onClick={() => void load()}
-          disabled={loading}
-        >
-          <RefreshCw size={16} /> Refresh
-        </Button>
-      </div>
-      {loading ? (
-        <p role="status">Loading shopping list…</p>
-      ) : visible.length === 0 ? (
-        <Card className="p-6 text-center">
-          <ShoppingBasket className="mx-auto mb-2" />
-          <p>
-            {filter === 'needed'
-              ? 'Nothing to buy right now.'
-              : hasMore
-                ? 'Load more to see older shopping items.'
-                : 'No purchased or cancelled items yet.'}
-          </p>
-        </Card>
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
-          <div className={`space-y-2 ${detailOpen ? 'max-lg:hidden' : ''}`}>
-            {visible.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  setSelectedId(item.id);
-                  setDetailOpen(true);
-                  setPurchasing(false);
-                  setFormOpen(false);
-                  setCancelConfirm(false);
-                  setError('');
-                  setNotice('');
-                  clearPurchasePreview();
-                }}
-                className={`w-full rounded-xl border p-4 text-left transition-colors hover:bg-muted/40 ${selectedId === item.id ? 'border-primary bg-muted/30' : ''}`}
-              >
-                <span className="flex items-center justify-between gap-2">
-                  <strong>{item.title}</strong>
-                  <Badge variant="outline">{item.status}</Badge>
-                </span>
-                <span className="mt-2 block text-sm text-muted-foreground">
-                  {item.quantity !== null
-                    ? `${item.quantity} ${item.unit ?? ''} · `
-                    : ''}
-                  {item.priority} priority
-                  {item.assignedBuyerDisplayName
-                    ? ` · ${item.assignedBuyerDisplayName}`
-                    : ''}
-                </span>
-              </button>
-            ))}
-          </div>
-          {selected && (
-            <Card className={detailOpen ? '' : 'max-lg:hidden'}>
-              <CardHeader>
+        <>
+          <div className="flex items-center justify-between gap-2">
+            <fieldset
+              className="board-record-filters min-w-0"
+              ref={focus.filters}
+            >
+              <legend className="sr-only">Filter shopping</legend>
+              {(
+                [
+                  ['needed', 'To buy'],
+                  ['history', 'History'],
+                ] as const
+              ).map(([key, label]) => (
                 <Button
-                  variant="ghost"
+                  key={key}
                   size="sm"
-                  className="mb-2 self-start lg:hidden"
-                  onClick={() => setDetailOpen(false)}
+                  disabled={busy || purchasing || cancelConfirm}
+                  variant={filter === key ? 'default' : 'outline'}
+                  aria-pressed={filter === key}
+                  onClick={() => {
+                    focus.row.current = null;
+                    setError('');
+                    setNotice('');
+                    close();
+                    setFilter(key);
+                  }}
                 >
-                  Back to shopping
+                  {label}
                 </Button>
-                <div className="flex flex-wrap items-center gap-2">
-                  <CardTitle>{selected.title}</CardTitle>
-                  <Badge variant="outline">{selected.status}</Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Added by {selected.createdByDisplayName} · {selected.priority}{' '}
-                  priority
+              ))}
+            </fieldset>
+            <RecordRefreshButton
+              label="shopping"
+              loading={loading || busy || purchasing || cancelConfirm}
+              onRefresh={() => {
+                setError('');
+                void browser.refresh();
+                void loadMembers();
+              }}
+            />
+          </div>
+          {browser.detailLoading && (
+            <p role="status" className="text-sm text-muted-foreground">
+              Opening item…
+            </p>
+          )}
+          {loading && visible.length === 0 && !selected && <WorkspaceLoading />}
+          {!loading && visible.length === 0 && !selected && !browser.error && (
+            <Card>
+              <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
+                <ShoppingBasket
+                  size={32}
+                  className="text-primary"
+                  aria-hidden="true"
+                />
+                <p className="font-heading text-lg">
+                  {filter === 'needed'
+                    ? 'Nothing to buy right now.'
+                    : hasMore
+                      ? 'Load more to see older shopping items.'
+                      : 'No purchased or cancelled items yet.'}
                 </p>
-              </CardHeader>
-              <CardContent className="space-y-5 text-sm">
-                <dl className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <dt className="text-muted-foreground">Quantity</dt>
-                    <dd>
-                      {selected.quantity === null
-                        ? 'Not specified'
-                        : `${selected.quantity} ${selected.unit ?? ''}`}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground">Assigned buyer</dt>
-                    <dd>
-                      {selected.assignedBuyerDisplayName ?? 'Nobody assigned'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground">Estimated price</dt>
-                    <dd>
-                      {selected.estimatedPriceMinor === null
-                        ? 'Not specified'
-                        : money(
-                            selected.estimatedPriceMinor,
-                            selected.currency,
-                          )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground">Purchased price</dt>
-                    <dd>
-                      {selected.purchasedPriceMinor === null
-                        ? 'Not specified'
-                        : money(
-                            selected.purchasedPriceMinor,
-                            selected.currency,
-                          )}
-                    </dd>
-                  </div>
-                </dl>
-                {selected.note && (
-                  <p>
-                    <strong>Note:</strong> {selected.note}
-                  </p>
-                )}
-                {selected.status === 'purchased' && (
-                  <p>Purchased by {selected.purchasedByDisplayName}.</p>
-                )}
-                {selected.linkedExpenseId && (
-                  <p>
-                    <Link
-                      className="text-primary underline"
-                      href={`/money?household=${encodeURIComponent(household.id)}&view=expenses&record=${encodeURIComponent(selected.linkedExpenseId)}`}
-                    >
-                      View linked expense
-                      {selected.linkedExpenseVoidedAt ? ' (voided)' : ''}
-                    </Link>
-                  </p>
-                )}
-                {canChange && (
-                  <div className="flex flex-wrap gap-2 border-t pt-4">
-                    <Button
-                      variant="outline"
-                      onClick={() => openForm(selected)}
-                    >
-                      <Pencil size={16} /> Edit
-                    </Button>
-                    <Button onClick={() => beginPurchase(selected)}>
-                      <Check size={16} /> Mark purchased
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setCancelConfirm(true);
-                        setPurchasing(false);
-                      }}
-                    >
-                      <X size={16} /> Cancel item
-                    </Button>
-                  </div>
-                )}
-                {cancelConfirm && canChange && (
-                  <div className="space-y-3 rounded-lg border p-4">
-                    <p>Cancel this item? It will stay visible in the list.</p>
-                    <div className="flex gap-2">
-                      <Button disabled={busy} onClick={() => void cancelItem()}>
-                        {busy ? 'Cancelling…' : 'Confirm cancellation'}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => setCancelConfirm(false)}
-                      >
-                        Keep item
-                      </Button>
-                    </div>
-                  </div>
-                )}
-                {purchasing && canChange && (
-                  <div className="space-y-4 rounded-lg border p-4">
-                    <h3 className="font-semibold">Confirm purchase</h3>
-                    <label className="grid gap-1 font-medium">
-                      Actual price · {household.defaultCurrency} (optional
-                      without expense)
-                      <input
-                        className="h-10 rounded-md border bg-background px-3"
-                        inputMode="decimal"
-                        value={actualPrice}
-                        onChange={(event) => {
-                          setActualPrice(event.target.value);
-                          clearPurchasePreview();
-                        }}
-                        placeholder="0.00"
-                      />
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={addExpense}
-                        onChange={(event) => {
-                          setAddExpense(event.target.checked);
-                          clearPurchasePreview();
-                        }}
-                      />
-                      Add a shared expense
-                    </label>
-                    {addExpense && (
-                      <div className="space-y-4 border-t pt-4">
-                        <p className="text-muted-foreground">
-                          The expense affects balances only after you review the
-                          API-calculated shares and confirm.
-                        </p>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <label className="grid gap-1 font-medium">
-                            Expense date · {household.timezone}
-                            <input
-                              className="h-10 rounded-md border bg-background px-3"
-                              type="date"
-                              value={spentOn}
-                              onChange={(event) => {
-                                setSpentOn(event.target.value);
-                                clearPurchasePreview();
-                              }}
-                            />
-                          </label>
-                          <label className="grid gap-1 font-medium">
-                            Who paid?
-                            <select
-                              className="h-10 rounded-md border bg-background px-3"
-                              value={payerId}
-                              onChange={(event) => {
-                                setPayerId(event.target.value);
-                                clearPurchasePreview();
-                              }}
-                            >
-                              {members.map((member) => (
-                                <option key={member.id} value={member.id}>
-                                  {member.displayName}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        </div>
-                        <fieldset>
-                          <legend className="mb-2 font-medium">
-                            Who shares this expense?
-                          </legend>
-                          <div className="flex flex-wrap gap-2">
-                            {members.map((member) => (
-                              <label
-                                key={member.id}
-                                className="flex items-center gap-2 rounded-md border px-3 py-2"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={participantIds.includes(member.id)}
-                                  onChange={() => {
-                                    setParticipantIds((current) =>
-                                      current.includes(member.id)
-                                        ? current.filter(
-                                            (id) => id !== member.id,
-                                          )
-                                        : [...current, member.id],
-                                    );
-                                    clearPurchasePreview();
-                                  }}
-                                />
-                                {member.displayName}
-                              </label>
-                            ))}
-                          </div>
-                        </fieldset>
-                        <label className="grid gap-1 font-medium">
-                          Split method
-                          <select
-                            className="h-10 rounded-md border bg-background px-3"
-                            value={splitMethod}
-                            onChange={(event) => {
-                              setSplitMethod(event.target.value as SplitMethod);
-                              setSplitValues({});
-                              clearPurchasePreview();
-                            }}
-                          >
-                            <option value="equal">Equal</option>
-                            <option value="exact">Exact amounts</option>
-                            <option value="percentage">Percentages</option>
-                            <option value="ratio">Whole-number ratios</option>
-                          </select>
-                        </label>
-                        {splitMethod !== 'equal' && (
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            {members
-                              .filter((member) =>
-                                participantIds.includes(member.id),
-                              )
-                              .map((member) => (
-                                <label
-                                  key={member.id}
-                                  className="grid gap-1 font-medium"
-                                >
-                                  {member.displayName} ·{' '}
-                                  {splitMethod === 'exact'
-                                    ? household.defaultCurrency
-                                    : splitMethod === 'percentage'
-                                      ? '%'
-                                      : 'ratio'}
-                                  <input
-                                    className="h-10 rounded-md border bg-background px-3"
-                                    inputMode="decimal"
-                                    value={splitValues[member.id] ?? ''}
-                                    onChange={(event) => {
-                                      setSplitValues((current) => ({
-                                        ...current,
-                                        [member.id]: event.target.value,
-                                      }));
-                                      clearPurchasePreview();
-                                    }}
-                                  />
-                                </label>
-                              ))}
-                          </div>
-                        )}
-                        <Button
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() => void showExpensePreview()}
-                        >
-                          {busy ? 'Calculating…' : 'Preview expense shares'}
-                        </Button>
-                        {preview && (
-                          <div className="space-y-2 rounded-lg bg-muted/40 p-4">
-                            <p className="font-semibold">
-                              Expense preview · {money(preview.amountMinor)}
-                            </p>
-                            <ul>
-                              {preview.shares.map((share) => (
-                                <li
-                                  key={share.memberId}
-                                  className="flex justify-between gap-2 py-1"
-                                >
-                                  <span>{share.displayName}</span>
-                                  <strong>{money(share.amountMinor)}</strong>
-                                </li>
-                              ))}
-                            </ul>
-                            <p className="text-muted-foreground">
-                              Payer:{' '}
-                              {
-                                members.find(
-                                  (member) =>
-                                    member.id === preview.payerMemberId,
-                                )?.displayName
-                              }
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {!addExpense && (
-                      <p className="text-muted-foreground">
-                        Marking purchased alone does not change household
-                        balances.
-                      </p>
-                    )}
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        disabled={busy || (addExpense && !preview)}
-                        onClick={() => void confirmPurchase()}
-                      >
-                        {busy
-                          ? 'Saving…'
-                          : addExpense
-                            ? 'Confirm purchase and expense'
-                            : 'Confirm purchase'}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setPurchasing(false);
-                          clearPurchasePreview();
-                        }}
-                      >
-                        Close
-                      </Button>
-                    </div>
-                  </div>
-                )}
               </CardContent>
             </Card>
           )}
-        </div>
-      )}
-      {hasMore && !loading && (
-        <Button
-          variant="outline"
-          onClick={() => void loadMore()}
-          disabled={loadingMore}
-          className={detailOpen ? 'max-lg:hidden' : ''}
-        >
-          {loadingMore ? 'Loading…' : 'Load more shopping items'}
-        </Button>
+          {(visible.length > 0 || selected) && (
+            <div
+              className={
+                selected && visible.length
+                  ? 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]'
+                  : 'space-y-4'
+              }
+            >
+              {visible.length > 0 && (
+                <Card className={selected ? 'max-lg:hidden' : undefined}>
+                  <CardContent className="space-y-2">
+                    {visible.map((item) => (
+                      <HouseTaskRow
+                        key={item.id}
+                        title={item.title}
+                        status={item.status}
+                        icon={ShoppingBasket}
+                        tone="lilac"
+                        active={selectedId === item.id}
+                        disabled={busy || purchasing || cancelConfirm}
+                        onClick={(event) => {
+                          focus.row.current = event.currentTarget;
+                          setError('');
+                          setNotice('');
+
+                          void open(item.id);
+                        }}
+                      >
+                        {item.quantity !== null && (
+                          <>
+                            {item.quantity} {item.unit} ·{' '}
+                          </>
+                        )}
+                        {item.assignedBuyerDisplayName ?? 'Unassigned'}
+                        {item.priority === 'high' && ' · High priority'}
+                      </HouseTaskRow>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+              {selected && (
+                <Card ref={focus.detail} tabIndex={-1} className="scroll-mt-6">
+                  <CardHeader>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="mb-2 self-start"
+                      disabled={busy || purchasing || cancelConfirm}
+                      onClick={() => focus.back(close)}
+                    >
+                      Back to shopping
+                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <CardTitle>{selected.title}</CardTitle>
+                      <Badge variant="outline" className="capitalize">
+                        {selected.status}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Added by {selected.createdByDisplayName} ·{' '}
+                      {selected.priority} priority
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-5 text-sm">
+                    <dl className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <dt className="text-muted-foreground">Quantity</dt>
+                        <dd>
+                          {selected.quantity === null
+                            ? 'Not specified'
+                            : `${selected.quantity} ${selected.unit ?? ''}`}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">
+                          Assigned buyer
+                        </dt>
+                        <dd>
+                          {selected.assignedBuyerDisplayName ??
+                            'Nobody assigned'}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">
+                          Estimated price
+                        </dt>
+                        <dd>
+                          {selected.estimatedPriceMinor === null
+                            ? 'Not specified'
+                            : money(
+                                selected.estimatedPriceMinor,
+                                selected.currency,
+                              )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">
+                          Purchased price
+                        </dt>
+                        <dd>
+                          {selected.purchasedPriceMinor === null
+                            ? 'Not specified'
+                            : money(
+                                selected.purchasedPriceMinor,
+                                selected.currency,
+                              )}
+                        </dd>
+                      </div>
+                    </dl>
+                    {selected.note && (
+                      <p>
+                        <strong>Note:</strong> {selected.note}
+                      </p>
+                    )}
+                    {selected.status === 'purchased' && (
+                      <p>Purchased by {selected.purchasedByDisplayName}.</p>
+                    )}
+                    {selected.linkedExpenseId && (
+                      <p>
+                        <Link
+                          className="text-primary underline"
+                          href={`/money?household=${encodeURIComponent(household.id)}&view=expenses&record=${encodeURIComponent(selected.linkedExpenseId)}`}
+                        >
+                          View linked expense
+                          {selected.linkedExpenseVoidedAt ? ' (voided)' : ''}
+                        </Link>
+                      </p>
+                    )}
+                    {canChange && !purchasing && !cancelConfirm && (
+                      <div className="flex flex-wrap gap-2 border-t pt-4">
+                        <Button
+                          variant="outline"
+                          disabled={busy || browser.detailLoading}
+                          onClick={() => openForm(selected)}
+                        >
+                          <Pencil size={16} /> Edit
+                        </Button>
+                        <Button
+                          disabled={busy || browser.detailLoading}
+                          onClick={() => beginPurchase(selected)}
+                        >
+                          <Check size={16} /> Mark purchased
+                        </Button>
+                        <Button
+                          variant="outline"
+                          disabled={busy || browser.detailLoading}
+                          onClick={() => {
+                            setCancelTarget(selected);
+                            setPurchaseTarget(null);
+                          }}
+                        >
+                          <X size={16} /> Cancel item
+                        </Button>
+                      </div>
+                    )}
+                    {cancelConfirm && canChange && (
+                      <div className="space-y-3 rounded-lg border p-4">
+                        <p>
+                          Cancel this item? It will stay visible in the list.
+                        </p>
+                        <div className="flex gap-2">
+                          <Button
+                            disabled={busy}
+                            onClick={() => void cancelItem()}
+                          >
+                            {busy ? 'Cancelling…' : 'Confirm cancellation'}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => setCancelTarget(null)}
+                          >
+                            Keep item
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    {purchasing && canChange && (
+                      <div className="space-y-4 rounded-lg border p-4">
+                        <h3 className="font-semibold">Confirm purchase</h3>
+                        <label className="grid gap-1 font-medium">
+                          Actual price · {household.defaultCurrency} (optional
+                          without expense)
+                          <input
+                            className="h-10 rounded-md border bg-background px-3"
+                            inputMode="decimal"
+                            value={actualPrice}
+                            onChange={(event) => {
+                              setActualPrice(event.target.value);
+                              clearPurchasePreview();
+                            }}
+                            placeholder="0.00"
+                          />
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={addExpense}
+                            onChange={(event) => {
+                              setAddExpense(event.target.checked);
+                              clearPurchasePreview();
+                            }}
+                          />
+                          Add a shared expense
+                        </label>
+                        {addExpense && (
+                          <div className="space-y-4 border-t pt-4">
+                            <p className="text-muted-foreground">
+                              The expense affects balances only after you review
+                              the API-calculated shares and confirm.
+                            </p>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <label className="grid gap-1 font-medium">
+                                Expense date · {household.timezone}
+                                <input
+                                  className="h-10 rounded-md border bg-background px-3"
+                                  type="date"
+                                  value={spentOn}
+                                  onChange={(event) => {
+                                    setSpentOn(event.target.value);
+                                    clearPurchasePreview();
+                                  }}
+                                />
+                              </label>
+                              <label className="grid gap-1 font-medium">
+                                Who paid?
+                                <select
+                                  className="h-10 rounded-md border bg-background px-3"
+                                  value={payerId}
+                                  onChange={(event) => {
+                                    setPayerId(event.target.value);
+                                    clearPurchasePreview();
+                                  }}
+                                >
+                                  {members.map((member) => (
+                                    <option key={member.id} value={member.id}>
+                                      {member.displayName}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            </div>
+                            <fieldset>
+                              <legend className="mb-2 font-medium">
+                                Who shares this expense?
+                              </legend>
+                              <div className="flex flex-wrap gap-2">
+                                {members.map((member) => (
+                                  <label
+                                    key={member.id}
+                                    className="flex items-center gap-2 rounded-md border px-3 py-2"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={participantIds.includes(
+                                        member.id,
+                                      )}
+                                      onChange={() => {
+                                        setParticipantIds((current) =>
+                                          current.includes(member.id)
+                                            ? current.filter(
+                                                (id) => id !== member.id,
+                                              )
+                                            : [...current, member.id],
+                                        );
+                                        clearPurchasePreview();
+                                      }}
+                                    />
+                                    {member.displayName}
+                                  </label>
+                                ))}
+                              </div>
+                            </fieldset>
+                            <label className="grid gap-1 font-medium">
+                              Split method
+                              <select
+                                className="h-10 rounded-md border bg-background px-3"
+                                value={splitMethod}
+                                onChange={(event) => {
+                                  setSplitMethod(
+                                    event.target.value as SplitMethod,
+                                  );
+                                  setSplitValues({});
+                                  clearPurchasePreview();
+                                }}
+                              >
+                                <option value="equal">Equal</option>
+                                <option value="exact">Exact amounts</option>
+                                <option value="percentage">Percentages</option>
+                                <option value="ratio">
+                                  Whole-number ratios
+                                </option>
+                              </select>
+                            </label>
+                            {splitMethod !== 'equal' && (
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {members
+                                  .filter((member) =>
+                                    participantIds.includes(member.id),
+                                  )
+                                  .map((member) => (
+                                    <label
+                                      key={member.id}
+                                      className="grid gap-1 font-medium"
+                                    >
+                                      {member.displayName} ·{' '}
+                                      {splitMethod === 'exact'
+                                        ? household.defaultCurrency
+                                        : splitMethod === 'percentage'
+                                          ? '%'
+                                          : 'ratio'}
+                                      <input
+                                        className="h-10 rounded-md border bg-background px-3"
+                                        inputMode="decimal"
+                                        value={splitValues[member.id] ?? ''}
+                                        onChange={(event) => {
+                                          setSplitValues((current) => ({
+                                            ...current,
+                                            [member.id]: event.target.value,
+                                          }));
+                                          clearPurchasePreview();
+                                        }}
+                                      />
+                                    </label>
+                                  ))}
+                              </div>
+                            )}
+                            <Button
+                              variant="outline"
+                              disabled={busy}
+                              onClick={() => void showExpensePreview()}
+                            >
+                              {busy ? 'Calculating…' : 'Preview expense shares'}
+                            </Button>
+                            {preview && (
+                              <div className="space-y-2 rounded-lg bg-muted/40 p-4">
+                                <p className="font-semibold">
+                                  Expense preview · {money(preview.amountMinor)}
+                                </p>
+                                <ul>
+                                  {preview.shares.map((share) => (
+                                    <li
+                                      key={share.memberId}
+                                      className="flex justify-between gap-2 py-1"
+                                    >
+                                      <span>{share.displayName}</span>
+                                      <strong>
+                                        {money(share.amountMinor)}
+                                      </strong>
+                                    </li>
+                                  ))}
+                                </ul>
+                                <p className="text-muted-foreground">
+                                  Payer:{' '}
+                                  {
+                                    members.find(
+                                      (member) =>
+                                        member.id === preview.payerMemberId,
+                                    )?.displayName
+                                  }
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {!addExpense && (
+                          <p className="text-muted-foreground">
+                            Marking purchased alone does not change household
+                            balances.
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            disabled={busy || (addExpense && !preview)}
+                            onClick={() => void confirmPurchase()}
+                          >
+                            {busy
+                              ? 'Saving…'
+                              : addExpense
+                                ? 'Confirm purchase and expense'
+                                : 'Confirm purchase'}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => {
+                              setPurchaseTarget(null);
+                              clearPurchasePreview();
+                              setError('');
+                            }}
+                          >
+                            Close
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+          {hasMore && !loading && (
+            <Button
+              variant="outline"
+              onClick={() => void browser.loadMore()}
+              disabled={loadingMore || busy || purchasing || cancelConfirm}
+              className={selected ? 'max-lg:hidden' : undefined}
+            >
+              {loadingMore ? 'Loading…' : 'Load more shopping items'}
+            </Button>
+          )}
+        </>
       )}
     </div>
   );

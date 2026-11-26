@@ -1,12 +1,17 @@
 'use client';
 
 import { Moon, Sun } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useTheme } from '@/lib/theme-context';
 import { Button } from './ui/button';
 
 export function ThemeToggle() {
   const { theme, ready, toggle } = useTheme();
-  const dark = theme === 'dark';
+  // The provider can initialize before a streamed workspace hydrates.
+  // Keep this control's first client render identical to its server output.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
+  const dark = hydrated && theme === 'dark';
   const label = `Switch to ${dark ? 'light' : 'dark'} mode`;
   return (
     <Button
@@ -15,7 +20,7 @@ export function ThemeToggle() {
       size="icon"
       className="header-icon-button header-icon-button-plain"
       onClick={toggle}
-      disabled={!ready}
+      disabled={!ready || !hydrated}
       aria-label={label}
       aria-pressed={dark}
       title={label}

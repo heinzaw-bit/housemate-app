@@ -430,7 +430,6 @@ for (const [name, element] of [
       key="quality-BalanceWorkspace"
       household={household}
       token="session"
-      onMoneyChanged={() => {}}
     />,
   ],
   [

@@ -2,8 +2,6 @@
 
 import { Plus, ReceiptText, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { FinancialHistory } from '@/components/financial-history';
-import { ReadStatus } from '@/components/read-status';
 import { SuccessNotice } from '@/components/success-notice';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,6 +34,7 @@ import { confirmationFailure } from '@/lib/financial-confirmation';
 import { useLeaveGuard } from '@/lib/pending-work';
 import { householdReadPath, recentRead } from '@/lib/recent-reads';
 import { appendRecords } from '@/lib/record-pages';
+import { useRefreshOnReturn } from '@/lib/use-refresh-on-return';
 import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
 type AdjustmentRow = {
@@ -111,6 +110,11 @@ export function BillWorkspace({
       )?.value.bills ?? [],
   );
   const [selected, setSelected] = useState<Bill | null>(null);
+  const canManageBills =
+    household.role === 'owner' || household.role === 'admin';
+  // Edits and payment status changes share the same saved-bill permission.
+  const canEditSelected = canManageBills && !!selected?.canEdit;
+  const canVoidSelected = canManageBills && !!selected?.canVoid;
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [detailsExpanded, setDetailsExpanded] = useState(true);
   const historyPanelId = useId();
@@ -150,6 +154,7 @@ export function BillWorkspace({
   const [formError, setFormError] = useState('');
   const [busy, setBusy] = useState<'preview' | 'save' | 'status' | null>(null);
   const pageOffset = useRef(0);
+  const loadRequest = useRef(0);
   const moreInFlight = useRef(false);
   const previewGeneration = useRef(0);
   const editFormRef = useRef<HTMLDivElement>(null);
@@ -190,6 +195,7 @@ export function BillWorkspace({
   });
 
   const load = useCallback(async () => {
+    const request = ++loadRequest.current;
     setLoading(true);
     setLoadError('');
     try {
@@ -197,8 +203,14 @@ export function BillWorkspace({
         getMembers(token, household.id),
         getBills(token, household.id),
       ]);
+      if (request !== loadRequest.current) return;
       setMembers(nextMembers);
       setBills(nextBills);
+      setSelected((current) =>
+        current
+          ? (nextBills.find((bill) => bill.id === current.id) ?? current)
+          : null,
+      );
       pageOffset.current = nextBills.length;
       setHasMore(nextBills.length === 50);
       setPayer((old) => old || nextMembers[0]?.id || '');
@@ -206,6 +218,7 @@ export function BillWorkspace({
         old.length ? old : nextMembers.map((member) => member.id),
       );
     } catch (error) {
+      if (request !== loadRequest.current) return;
       if (
         error instanceof ApiRequestError &&
         [401, 403, 404].includes(error.status)
@@ -218,12 +231,16 @@ export function BillWorkspace({
         error instanceof Error ? error.message : 'Could not load bills.',
       );
     } finally {
-      setLoading(false);
+      if (request === loadRequest.current) setLoading(false);
     }
   }, [token, household.id]);
 
+  useRefreshOnReturn(load, !formOpen && !voidOpen, 15_000, household.id);
   useEffect(() => {
     void load();
+    return () => {
+      loadRequest.current += 1;
+    };
   }, [load]);
 
   useEffect(() => {
@@ -456,6 +473,8 @@ export function BillWorkspace({
             previewDraft,
             savedDraft.confirmationKey(previewDraft, retryKey),
           );
+      loadRequest.current += 1;
+      setLoading(false);
       setBills((old) =>
         [result, ...old.filter((bill) => bill.id !== result.id)].sort((a, b) =>
           b.dueDate.localeCompare(a.dueDate),
@@ -466,8 +485,12 @@ export function BillWorkspace({
       onMoneyChanged();
       setNotice(
         editing
-          ? 'Bill updated. Paid bills now use the revised shares in balances.'
-          : 'Bill confirmed and shared with your household.',
+          ? result.paymentStatus === 'paid'
+            ? 'Bill updated. Member balances now use the revised shares.'
+            : 'Bill updated. Household balances include the revised split using the planned payer.'
+          : result.paymentStatus === 'paid'
+            ? 'Paid bill confirmed. Member balances include the split.'
+            : 'Unpaid bill confirmed. Household balances include its split using the planned payer.',
       );
       setFormOpen(false);
       setFormStep('details');
@@ -515,7 +538,7 @@ export function BillWorkspace({
   }
 
   async function updateStatus(status: Bill['paymentStatus']) {
-    if (!selected) return;
+    if (!selected || !canEditSelected || selected.voidedAt) return;
     setBusy('status');
     setDetailError('');
     try {
@@ -525,6 +548,8 @@ export function BillWorkspace({
         selected.id,
         status,
       );
+      loadRequest.current += 1;
+      setLoading(false);
       setSelected(result);
       setBills((old) =>
         old.map((bill) => (bill.id === result.id ? result : bill)),
@@ -796,11 +821,18 @@ export function BillWorkspace({
                         );
                       }}
                     >
-                      <option value="unpaid">Unpaid</option>
-                      <option value="paid">Paid</option>
+                      <option value="unpaid">
+                        Unpaid — share contributions first
+                      </option>
+                      <option value="paid">Paid — provider already paid</option>
                     </select>
                   </label>
                 </div>
+                <p className="text-sm text-muted-foreground">
+                  {paymentStatus === 'unpaid'
+                    ? 'Each member’s balance will include their expected contribution immediately, with the bill total credited to the planned payer.'
+                    : 'The provider has been paid. Each member’s split will be included in confirmed balances.'}
+                </p>
                 <Button
                   disabled={busy !== null}
                   onClick={() => {
@@ -1030,6 +1062,11 @@ export function BillWorkspace({
                       ` Revision ${editing.revision} will be replaced on confirmation.`}
                   </p>
                 </div>
+                <p className="rounded-lg border p-3 text-sm" role="note">
+                  {preview.paymentStatus === 'unpaid'
+                    ? 'These shares count toward household balances using the planned payer. The provider still needs to be paid.'
+                    : 'Paid bill: these shares will update each member’s confirmed balance.'}
+                </p>
                 <dl className="grid gap-3 text-sm sm:grid-cols-2">
                   <div>
                     <dt>Bill total</dt>
@@ -1151,17 +1188,12 @@ export function BillWorkspace({
           className="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive"
         >
           {loadError}{' '}
+          {bills.length > 0 ? 'Shown bills may be out of date.' : ''}{' '}
           <Button variant="link" onClick={() => void load()}>
             Retry
           </Button>
         </p>
       )}
-      <ReadStatus
-        token={token}
-        path={readPath}
-        refreshing={loading}
-        error={loadError}
-      />
       {loading && !recentRead(token, readPath) ? (
         <WorkspaceLoading kind="records" />
       ) : (
@@ -1299,7 +1331,7 @@ export function BillWorkspace({
                         )}
                       </p>
                     )}
-                    {selected.canEdit && (
+                    {canEditSelected && (
                       <div className="mt-3">
                         <Button
                           variant="outline"
@@ -1310,7 +1342,7 @@ export function BillWorkspace({
                         </Button>
                       </div>
                     )}
-                    {selected.canVoid && !voidOpen && (
+                    {canVoidSelected && !voidOpen && (
                       <Button
                         variant="destructive"
                         size="sm"
@@ -1324,7 +1356,7 @@ export function BillWorkspace({
                       </Button>
                     )}
                   </div>
-                  {voidOpen && selected.canVoid && (
+                  {voidOpen && canVoidSelected && (
                     <VoidConfirmation
                       key={`${selected.id}-${selected.revision}`}
                       record={selected}
@@ -1387,7 +1419,11 @@ export function BillWorkspace({
                       <dd>{date(selected.dueDate)}</dd>
                     </div>
                     <div>
-                      <dt className="text-muted-foreground">Payer</dt>
+                      <dt className="text-muted-foreground">
+                        {selected.paymentStatus === 'unpaid'
+                          ? 'Planned payer'
+                          : 'Payer'}
+                      </dt>
                       <dd>{selected.payerDisplayName}</dd>
                     </div>
                     <div>
@@ -1395,9 +1431,8 @@ export function BillWorkspace({
                       <dd className="capitalize">{selected.paymentStatus}</dd>
                     </div>
                   </dl>
-                  {!selected.voidedAt && (
+                  {canEditSelected && !selected.voidedAt && (
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm">Mark provider:</span>
                       <Button
                         size="sm"
                         variant={
@@ -1406,28 +1441,29 @@ export function BillWorkspace({
                             : 'outline'
                         }
                         disabled={busy === 'status'}
-                        onClick={() => void updateStatus('unpaid')}
-                      >
-                        Unpaid
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={
-                          selected.paymentStatus === 'paid'
-                            ? 'default'
-                            : 'outline'
+                        onClick={() =>
+                          void updateStatus(
+                            selected.paymentStatus === 'unpaid'
+                              ? 'paid'
+                              : 'unpaid',
+                          )
                         }
-                        disabled={busy === 'status'}
-                        onClick={() => void updateStatus('paid')}
                       >
-                        Paid
+                        {selected.paymentStatus === 'unpaid'
+                          ? 'Mark Paid'
+                          : 'Mark Unpaid'}
                       </Button>
                     </div>
                   )}
                   {!selected.voidedAt && (
                     <p className="text-xs text-muted-foreground">
-                      This records a status only. HouseMate does not process a
-                      payment.
+                      {selected.paymentStatus === 'unpaid'
+                        ? 'The split counts toward household balances using the planned payer.'
+                        : 'The split is included in confirmed member balances.'}{' '}
+                      {canEditSelected &&
+                        selected.paymentStatus === 'unpaid' &&
+                        'Mark Paid only after the provider has been paid. '}
+                      HouseMate does not process a payment.
                     </p>
                   )}
                   <div className="border-t pt-3 text-sm">
@@ -1472,13 +1508,6 @@ export function BillWorkspace({
                       </div>
                     ))}
                   </div>
-                  <FinancialHistory
-                    key={`history-${selected.id}-${selected.revision}`}
-                    token={token}
-                    householdId={household.id}
-                    recordId={selected.id}
-                    kind="bill"
-                  />
                 </>
               )}
             </CardContent>

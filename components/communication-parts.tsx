@@ -188,7 +188,7 @@ export function CommunicationBrowser<T extends { id: string }>({
   notice: string;
   onOpen: (id: string) => void;
   onClose: () => void;
-  onRefresh: () => void;
+  onRefresh?: () => void;
   onMore: () => void;
   renderRow: (record: T) => React.ReactNode;
   renderDetail: (record: T) => React.ReactNode;
@@ -217,16 +217,18 @@ export function CommunicationBrowser<T extends { id: string }>({
             <p className="text-sm text-muted-foreground">{subtitle}</p>
           </div>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={loading}
-              onClick={onRefresh}
-              aria-label={`Refresh ${title.toLowerCase()}`}
-              title={`Refresh ${title.toLowerCase()}`}
-            >
-              <RefreshCw size={15} aria-hidden="true" /> Refresh
-            </Button>
+            {onRefresh && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={loading}
+                onClick={onRefresh}
+                aria-label={`Refresh ${title.toLowerCase()}`}
+                title={`Refresh ${title.toLowerCase()}`}
+              >
+                <RefreshCw size={15} aria-hidden="true" /> Refresh
+              </Button>
+            )}
             <Button size="sm" onClick={onToggleCreate}>
               {createOpen
                 ? 'Close form'
@@ -277,23 +279,13 @@ export function CommunicationBrowser<T extends { id: string }>({
           </Button>
         ))}
       </fieldset>
-      {compact ? (
-        <RecordRefreshStatus
+      {compact && onRefresh && (
+        <RecordRefreshButton
           label={title.toLowerCase()}
-          updatedAt={updatedAt}
           loading={loading}
           onRefresh={onRefresh}
         />
-      ) : updatedAt ? (
-        <p className="text-xs text-muted-foreground">
-          Updated{' '}
-          {new Date(updatedAt).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          })}{' '}
-          · Refreshes while this section is open.
-        </p>
-      ) : null}
+      )}
       {loading && !updatedAt && <WorkspaceLoading />}
       {detailLoading && (
         <p role="status" className="text-sm text-muted-foreground">
@@ -368,36 +360,23 @@ export function CommunicationBrowser<T extends { id: string }>({
   );
 }
 
-export function RecordRefreshStatus({
+export function RecordRefreshButton({
   label,
-  updatedAt,
   loading,
   onRefresh,
 }: {
   label: string;
-  updatedAt: string;
   loading: boolean;
   onRefresh: () => void;
 }) {
   return (
-    <div className="board-record-status">
-      <p className="text-xs text-muted-foreground">
-        {loading
-          ? updatedAt
-            ? `Last updated ${new Date(updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · Updating…`
-            : 'Updating…'
-          : updatedAt
-            ? `Updated ${new Date(updatedAt).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}`
-            : 'Not updated yet'}
-      </p>
+    <div className="flex justify-end">
       <Button
         type="button"
         variant="ghost"
         size="icon"
         disabled={loading}
+        aria-busy={loading}
         onClick={onRefresh}
         aria-label={`Refresh ${label}`}
         title={`Refresh ${label}`}

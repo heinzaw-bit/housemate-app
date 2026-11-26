@@ -21,7 +21,7 @@ import {
 } from '@/lib/api';
 import { useLeaveGuard } from '@/lib/pending-work';
 import { householdReadPath, recentRead } from '@/lib/recent-reads';
-import { RecordRefreshStatus } from './communication-parts';
+import { RecordRefreshButton } from './communication-parts';
 import { SavedDraftNotice, useSavedDraft } from './saved-draft';
 
 function localAt(timezone: string, hoursAhead: number): string {
@@ -580,9 +580,8 @@ export function EventWorkspace({
         </Button>
       </fieldset>
       {(compact || updatedAt) && (
-        <RecordRefreshStatus
+        <RecordRefreshButton
           label="events"
-          updatedAt={updatedAt}
           loading={loading}
           onRefresh={() => void refresh()}
         />

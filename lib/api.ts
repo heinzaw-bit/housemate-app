@@ -1,3 +1,4 @@
+import { publishBillUpdate } from './bill-updates';
 import { clearRecentReads, readGeneration, rememberRead } from './recent-reads';
 
 export const searchTypes = [
@@ -470,6 +471,7 @@ export interface VoidPreview {
     changeMinor: number;
     afterMinor: number;
   }[];
+  expectedBalanceEffects?: VoidPreview['balanceEffects'];
   pendingBillCountBefore: number;
   pendingBillCountAfter: number;
   pendingBillAmountMinorBefore: number;
@@ -505,6 +507,8 @@ export interface MemberBalance {
   netMinor: number;
   owesMinor: number;
   owedMinor: number;
+  expectedNetMinor?: number;
+  pendingBillShareMinor?: number;
 }
 export interface SettlementSuggestion {
   senderMemberId: string;
@@ -1063,13 +1067,13 @@ export function voidBill(
   );
 }
 
-export function setBillStatus(
+export async function setBillStatus(
   token: string,
   householdId: string,
   billId: string,
   paymentStatus: Bill['paymentStatus'],
 ) {
-  return request<Bill>(
+  const bill = await request<Bill>(
     `/v1/households/${encodeURIComponent(householdId)}/bills/${encodeURIComponent(billId)}/status`,
     token,
     {
@@ -1077,6 +1081,8 @@ export function setBillStatus(
       body: JSON.stringify({ paymentStatus }),
     },
   );
+  publishBillUpdate(householdId);
+  return bill;
 }
 
 export function getBalances(token: string, householdId: string) {

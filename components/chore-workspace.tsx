@@ -1,7 +1,7 @@
 'use client';
 
-import { ClipboardList, RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { ClipboardList } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { SuccessNotice } from '@/components/success-notice';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,11 @@ import {
   skipChore,
 } from '@/lib/api';
 import { useLeaveGuard } from '@/lib/pending-work';
+import { useHouseRecords } from '@/lib/use-house-records';
+import { RecordRefreshButton } from './communication-parts';
+import { HouseTaskRow, useHouseTaskFocus } from './house-task-list';
 import { SavedDraftNotice, useSavedDraft } from './saved-draft';
+import { WorkspaceLoading } from './workspace-loading';
 
 function tomorrow(timezone: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -56,6 +60,16 @@ function dueLabel(chore: Chore): string {
 const fieldClass =
   'w-full rounded-2xl border border-transparent bg-input/50 px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30';
 
+function loadPage(
+  token: string,
+  householdId: string,
+  _scope: 'all',
+  limit: number,
+  offset: number,
+) {
+  return getChores(token, householdId, limit, offset);
+}
+
 export function ChoreWorkspace({
   household,
   token,
@@ -71,22 +85,20 @@ export function ChoreWorkspace({
   createRequest?: number;
   onHouseChanged?: () => void;
 }) {
-  const [chores, setChores] = useState<Chore[]>([]);
   const [members, setMembers] = useState<HouseholdMember[]>([]);
-  const [selectedId, setSelectedId] = useState('');
   const [filter, setFilter] = useState<
     'swaps' | 'assigned' | 'upcoming' | 'overdue' | 'closed'
   >('assigned');
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadingMembers, setLoadingMembers] = useState(true);
+  const [memberError, setMemberError] = useState('');
+  const memberRequest = useRef(0);
+  const handledCreate = useRef(0);
+  const handledLink = useRef(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [formOpen, setFormOpen] = useState(false);
-  useLeaveGuard(formOpen);
+  useLeaveGuard(formOpen || busy);
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [dueAtLocal, setDueAtLocal] = useState(() =>
@@ -96,7 +108,28 @@ export function ChoreWorkspace({
   const [skipReason, setSkipReason] = useState('');
   const [swapTargetId, setSwapTargetId] = useState('');
   const [reassignId, setReassignId] = useState('');
-  const selected = chores.find((chore) => chore.id === selectedId) ?? null;
+  const browser = useHouseRecords({
+    token,
+    householdId: household.id,
+    scope: 'all',
+    loadPage,
+    getRecord: getChore,
+    focusedId,
+    focusSignal,
+    pauseRefresh: formOpen || busy,
+  });
+  const {
+    records: chores,
+    selected,
+    loading,
+    hasMore,
+    loadingMore,
+    open,
+    close,
+    accept,
+  } = browser;
+  const focus = useHouseTaskFocus(formOpen, createRequest, selected?.id);
+  const selectedId = selected?.id;
 
   const savedDraft = useSavedDraft({
     kind: 'chore',
@@ -111,97 +144,73 @@ export function ChoreWorkspace({
     },
   });
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    setLoadFailed(false);
+  const loadMembers = useCallback(async () => {
+    const request = ++memberRequest.current;
+    setLoadingMembers(true);
+    setMemberError('');
     try {
-      const [nextChores, nextMembers] = await Promise.all([
-        getChores(token, household.id),
-        getMembers(token, household.id),
-      ]);
-      setChores((current) => [
-        ...nextChores,
-        ...current.filter(
-          (chore) =>
-            chore.id === focusedId &&
-            !nextChores.some((next) => next.id === chore.id),
-        ),
-      ]);
-      setMembers(nextMembers);
-      setHasMore(nextChores.length === 50);
-      setSelectedId((current) =>
-        current &&
-        (current === focusedId ||
-          nextChores.some((chore) => chore.id === current))
-          ? current
-          : (nextChores.find(
-              (chore) =>
-                chore.status === 'open' &&
-                chore.assigneeMemberId === chore.viewerMemberId,
-            )?.id ?? ''),
-      );
-      setAssigneeId((current) => current || nextMembers[0]?.id || '');
+      const next = await getMembers(token, household.id);
+      if (request !== memberRequest.current) return;
+      setMembers(next);
+      setAssigneeId((current) => current || next[0]?.id || '');
     } catch (failure) {
-      setChores([]);
+      if (request !== memberRequest.current) return;
       setMembers([]);
-      setLoadFailed(true);
-      setError(errorText(failure));
+      setMemberError(errorText(failure));
     } finally {
-      setLoading(false);
+      if (request === memberRequest.current) setLoadingMembers(false);
     }
-  }, [household.id, token, focusedId]);
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-  useEffect(() => {
-    if (createRequest) setFormOpen(true);
-  }, [createRequest]);
-  useEffect(() => {
-    if (!focusedId || !focusSignal) return;
-    let active = true;
-    void getChore(token, household.id, focusedId).then(
-      (chore) => {
-        if (!active) return;
-        setChores((current) => [
-          chore,
-          ...current.filter((item) => item.id !== chore.id),
-        ]);
-        setSelectedId(chore.id);
-        setFilter(
-          chore.pendingSwap?.canRespond
-            ? 'swaps'
-            : chore.status !== 'open'
-              ? 'closed'
-              : chore.assigneeMemberId === chore.viewerMemberId
-                ? 'assigned'
-                : new Date(chore.dueAt).getTime() < Date.now()
-                  ? 'overdue'
-                  : 'upcoming',
-        );
-        setDetailOpen(true);
-      },
-      (failure) => {
-        if (active) setError(errorText(failure));
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [focusedId, focusSignal, household.id, token]);
+  }, [token, household.id]);
 
-  function replaceChore(chore: Chore) {
-    setChores((current) =>
-      current.map((item) => (item.id === chore.id ? chore : item)),
+  useEffect(() => {
+    void loadMembers();
+    return () => {
+      memberRequest.current += 1;
+    };
+  }, [loadMembers]);
+
+  useEffect(() => {
+    if (!createRequest || createRequest === handledCreate.current) return;
+    handledCreate.current = createRequest;
+    if (busy || formOpen) return;
+    setTitle('');
+    setNote('');
+    setDueAtLocal(tomorrow(household.timezone));
+    setAssigneeId(members[0]?.id ?? '');
+    setError('');
+    setNotice('');
+    setFormOpen(true);
+  }, [createRequest, busy, formOpen, household.timezone, members]);
+
+  useEffect(() => {
+    if (
+      !focusSignal ||
+      handledLink.current === focusSignal ||
+      selected?.id !== focusedId ||
+      !selected
+    )
+      return;
+    handledLink.current = focusSignal;
+    setFilter(
+      selected.pendingSwap?.canRespond
+        ? 'swaps'
+        : selected.status !== 'open'
+          ? 'closed'
+          : selected.assigneeMemberId === selected.viewerMemberId
+            ? 'assigned'
+            : new Date(selected.dueAt).getTime() < Date.now()
+              ? 'overdue'
+              : 'upcoming',
     );
-  }
+  }, [focusedId, focusSignal, selected]);
+
   async function runAction(action: () => Promise<Chore>, success: string) {
     setBusy(true);
     setError('');
     setNotice('');
     try {
       const updated = await action();
-      replaceChore(updated);
+      accept(updated);
       onHouseChanged();
       if (updated.status !== 'open') setFilter('closed');
       else if (
@@ -224,7 +233,7 @@ export function ChoreWorkspace({
         selected
       ) {
         try {
-          replaceChore(await getChore(token, household.id, selected.id));
+          accept(await getChore(token, household.id, selected.id));
         } catch {
           /* Keep the original error. */
         }
@@ -256,9 +265,9 @@ export function ChoreWorkspace({
         draft,
         savedDraft.confirmationKey(draft),
       );
-      setChores((current) => [created, ...current]);
+      accept(created);
+      void browser.refresh(true);
       savedDraft.clear();
-      setSelectedId(created.id);
       setFilter('upcoming');
       setTitle('');
       setNote('');
@@ -273,23 +282,6 @@ export function ChoreWorkspace({
       setBusy(false);
     }
   }
-  async function loadMore() {
-    setLoadingMore(true);
-    setError('');
-    try {
-      const next = await getChores(token, household.id, 50, chores.length);
-      setChores((current) => [
-        ...current,
-        ...next.filter((item) => !current.some((old) => old.id === item.id)),
-      ]);
-      setHasMore(next.length === 50);
-    } catch (failure) {
-      setError(errorText(failure));
-    } finally {
-      setLoadingMore(false);
-    }
-  }
-
   function answerSwap(decision: 'accepted' | 'declined') {
     if (!selected?.pendingSwap) return;
     const { id, revision, pendingSwap } = selected;
@@ -338,17 +330,24 @@ export function ChoreWorkspace({
       <SavedDraftNotice
         draft={savedDraft}
         disabled={busy}
-        resumeDisabled={loading || loadFailed}
+        resumeDisabled={loadingMembers || !members.length}
       />
-      <div>
-        <h2 className="text-xl font-semibold">Chores</h2>
-        <p className="text-sm text-muted-foreground">
-          Your assignments, swap requests, and household work.
+      {(error || browser.error) && (
+        <p role="alert" className="form-message error">
+          {error || browser.error}
         </p>
-      </div>
-      {error && (
-        <p className="form-message error" role="alert">
-          {error}
+      )}
+      {memberError && (
+        <p role="alert" className="form-message error">
+          {memberError}{' '}
+          <Button
+            type="button"
+            variant="link"
+            disabled={loadingMembers}
+            onClick={() => void loadMembers()}
+          >
+            Retry members
+          </Button>
         </p>
       )}
       {notice && (
@@ -356,7 +355,7 @@ export function ChoreWorkspace({
           {notice}
         </SuccessNotice>
       )}
-      {formOpen && (
+      {formOpen ? (
         <Card>
           <CardHeader>
             <CardTitle>New chore</CardTitle>
@@ -364,367 +363,434 @@ export function ChoreWorkspace({
           <CardContent>
             <form
               onSubmit={(event) => void submit(event)}
-              className="grid gap-4 sm:grid-cols-2"
+              className="scroll-mt-6 space-y-4"
             >
-              <label htmlFor="chore-title" className="space-y-1 sm:col-span-2">
-                <span>Chore name</span>
-                <Input
-                  id="chore-title"
-                  required
-                  maxLength={160}
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                />
-              </label>
-              <label htmlFor="chore-due" className="space-y-1">
-                <span>Due date and time · {household.timezone}</span>
-                <Input
-                  id="chore-due"
-                  type="datetime-local"
-                  required
-                  value={dueAtLocal}
-                  onChange={(event) => setDueAtLocal(event.target.value)}
-                />
-              </label>
-              <label className="space-y-1">
-                <span>Assign to</span>
-                <select
-                  className={fieldClass}
-                  required
-                  value={assigneeId}
-                  onChange={(event) => setAssigneeId(event.target.value)}
-                >
-                  <option value="">Choose a member</option>
-                  {members.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.displayName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="space-y-1 sm:col-span-2">
-                <span>Note (optional)</span>
-                <textarea
-                  className={`${fieldClass} min-h-24`}
-                  maxLength={500}
-                  value={note}
-                  onChange={(event) => setNote(event.target.value)}
-                />
-              </label>
-              <Button type="submit" disabled={busy || loading}>
-                {busy ? 'Saving…' : 'Create chore'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  savedDraft.clear();
-                  setFormOpen(false);
-                }}
+              <fieldset
+                disabled={busy}
+                className="grid min-w-0 gap-4 sm:grid-cols-2"
               >
-                Close
-              </Button>
+                <label
+                  htmlFor="chore-title"
+                  className="space-y-1 sm:col-span-2"
+                >
+                  <span>Chore name</span>
+                  <Input
+                    ref={focus.name}
+                    id="chore-title"
+                    required
+                    maxLength={160}
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                  />
+                </label>
+                <label htmlFor="chore-due" className="space-y-1">
+                  <span>Due date and time · {household.timezone}</span>
+                  <Input
+                    id="chore-due"
+                    type="datetime-local"
+                    required
+                    value={dueAtLocal}
+                    onChange={(event) => setDueAtLocal(event.target.value)}
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span>Assign to</span>
+                  <select
+                    className={fieldClass}
+                    required
+                    value={assigneeId}
+                    onChange={(event) => setAssigneeId(event.target.value)}
+                  >
+                    <option value="">Choose a member</option>
+                    {members.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1 sm:col-span-2">
+                  <span>Note (optional)</span>
+                  <textarea
+                    className={`${fieldClass} min-h-24`}
+                    maxLength={500}
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
+                  />
+                </label>
+              </fieldset>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="submit"
+                  disabled={busy || loadingMembers || !members.length}
+                >
+                  {busy ? 'Saving…' : 'Create chore'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => {
+                    savedDraft.clear();
+                    setFormOpen(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
             </form>
           </CardContent>
         </Card>
-      )}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <fieldset className="flex flex-wrap gap-2">
-          <legend className="sr-only">Filter chores</legend>
-          {(
-            ['swaps', 'assigned', 'overdue', 'upcoming', 'closed'] as const
-          ).map((key) => (
-            <Button
-              key={key}
-              variant={filter === key ? 'default' : 'outline'}
-              aria-pressed={filter === key}
-              onClick={() => {
-                setFilter(key);
-                setSelectedId(groups[key][0]?.id ?? '');
-                setDetailOpen(false);
-              }}
-            >
-              {key === 'swaps'
-                ? 'Swap requests'
-                : key === 'assigned'
-                  ? 'Assigned to me'
-                  : key === 'closed'
-                    ? 'History'
-                    : key[0].toUpperCase() + key.slice(1)}
-            </Button>
-          ))}
-        </fieldset>
-        <Button
-          variant="outline"
-          onClick={() => void refresh()}
-          disabled={loading}
-        >
-          <RefreshCw size={16} aria-hidden="true" /> Refresh
-        </Button>
-      </div>
-      {loading ? (
-        <p role="status">Loading chores…</p>
-      ) : loadFailed ? null : visible.length === 0 ? (
-        <Card className="p-6 text-center">
-          <ClipboardList className="mx-auto mb-2" aria-hidden="true" />
-          <p>
-            {filter === 'swaps'
-              ? 'No swap requests waiting for you.'
-              : filter === 'assigned'
-                ? 'No open chores assigned to you.'
-                : filter === 'upcoming'
-                  ? 'No upcoming chores.'
-                  : filter === 'overdue'
-                    ? 'Nothing overdue.'
-                    : 'No completed or skipped chores yet.'}
-          </p>
-        </Card>
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
-          <div className={`space-y-2 ${detailOpen ? 'max-lg:hidden' : ''}`}>
-            {visible.map((chore) => (
-              <button
-                key={chore.id}
-                type="button"
-                onClick={() => {
-                  setSelectedId(chore.id);
-                  setDetailOpen(true);
-                  setError('');
-                  setNotice('');
-                }}
-                className={`w-full rounded-xl border p-4 text-left transition-colors hover:bg-muted/40 ${selectedId === chore.id ? 'border-primary bg-muted/30' : ''}`}
-              >
-                <span className="flex items-center justify-between gap-2">
-                  <strong>{chore.title}</strong>
-                  <Badge variant="outline">{chore.status}</Badge>
-                </span>
-                <span className="mt-2 block text-sm text-muted-foreground">
-                  {chore.assigneeDisplayName} · Due {dueLabel(chore)}
-                </span>
-                {chore.pendingSwap && (
-                  <span className="mt-1 block text-sm">
-                    Swap requested with {chore.pendingSwap.targetDisplayName}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-          {selected && (
-            <Card className={detailOpen ? '' : 'max-lg:hidden'}>
-              <CardHeader>
+        <>
+          <div className="flex items-center justify-between gap-2">
+            <fieldset
+              className="board-record-filters min-w-0"
+              ref={focus.filters}
+            >
+              <legend className="sr-only">Filter chores</legend>
+              {(
+                [
+                  ['assigned', 'Assigned to me'],
+                  ['upcoming', 'Upcoming'],
+                  ['overdue', 'Overdue'],
+                  ['swaps', 'Swap requests'],
+                  ['closed', 'History'],
+                ] as const
+              ).map(([key, label]) => (
                 <Button
-                  variant="ghost"
+                  key={key}
                   size="sm"
-                  className="mb-2 self-start lg:hidden"
-                  onClick={() => setDetailOpen(false)}
+                  disabled={busy}
+                  variant={filter === key ? 'default' : 'outline'}
+                  aria-pressed={filter === key}
+                  onClick={() => {
+                    focus.row.current = null;
+                    setError('');
+                    setNotice('');
+                    close();
+                    setFilter(key);
+                  }}
                 >
-                  Back to chores
+                  {label}
                 </Button>
-                <CardTitle>{selected.title}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p>
-                  Assigned to <strong>{selected.assigneeDisplayName}</strong>
+              ))}
+            </fieldset>
+            <RecordRefreshButton
+              label="chores"
+              loading={loading || busy}
+              onRefresh={() => {
+                setError('');
+                void browser.refresh();
+                void loadMembers();
+              }}
+            />
+          </div>
+          {browser.detailLoading && (
+            <p role="status" className="text-sm text-muted-foreground">
+              Opening chore…
+            </p>
+          )}
+          {loading && visible.length === 0 && !selected && <WorkspaceLoading />}
+          {!loading && visible.length === 0 && !selected && !browser.error && (
+            <Card>
+              <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
+                <ClipboardList
+                  size={32}
+                  className="text-primary"
+                  aria-hidden="true"
+                />
+                <p className="font-heading text-lg">
+                  {filter === 'swaps'
+                    ? 'No swap requests waiting for you.'
+                    : filter === 'assigned'
+                      ? 'No open chores assigned to you.'
+                      : filter === 'upcoming'
+                        ? 'No upcoming chores.'
+                        : filter === 'overdue'
+                          ? 'Nothing overdue.'
+                          : 'No completed or skipped chores yet.'}
                 </p>
-                <p>
-                  Due {dueLabel(selected)} · {selected.timezone}
-                </p>
-                {selected.note && (
-                  <p className="whitespace-pre-wrap">{selected.note}</p>
-                )}
-                <p className="text-sm text-muted-foreground">
-                  Created by {selected.createdByDisplayName}
-                </p>
-                {selected.status === 'open' && (
-                  <>
-                    {selected.canComplete && (
-                      <div className="space-y-3 border-t pt-4">
-                        <Button
-                          disabled={busy}
-                          onClick={() =>
-                            void runAction(
-                              () =>
-                                completeChore(
-                                  token,
-                                  household.id,
-                                  selected.id,
-                                  selected.revision,
-                                ),
-                              'Chore completed.',
-                            )
-                          }
-                        >
-                          Mark complete
-                        </Button>
-                        <label className="block space-y-1">
-                          <span>Reason to skip</span>
-                          <textarea
-                            className={`${fieldClass} min-h-20`}
-                            maxLength={500}
-                            value={skipReason}
-                            onChange={(event) =>
-                              setSkipReason(event.target.value)
-                            }
-                          />
-                        </label>
-                        <Button
-                          variant="outline"
-                          disabled={busy || !skipReason.trim()}
-                          onClick={() =>
-                            void runAction(
-                              () =>
-                                skipChore(
-                                  token,
-                                  household.id,
-                                  selected.id,
-                                  selected.revision,
-                                  skipReason,
-                                ),
-                              'Chore skipped.',
-                            )
-                          }
-                        >
-                          Skip chore
-                        </Button>
-                      </div>
-                    )}
-                    {selected.pendingSwap && (
-                      <div className="space-y-2 border-t pt-4">
-                        <p>
-                          {selected.pendingSwap.requestedByDisplayName} asked{' '}
-                          {selected.pendingSwap.targetDisplayName} to take this
-                          chore.
-                        </p>
-                        {selected.pendingSwap.canRespond && (
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              disabled={busy}
-                              onClick={() => answerSwap('accepted')}
-                            >
-                              Accept swap
-                            </Button>
-                            <Button
-                              variant="outline"
-                              disabled={busy}
-                              onClick={() => answerSwap('declined')}
-                            >
-                              Decline
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {selected.canRequestSwap && (
-                      <div className="space-y-2 border-t pt-4">
-                        <label className="block space-y-1">
-                          <span>Ask someone to take this chore</span>
-                          <select
-                            className={fieldClass}
-                            value={swapTargetId}
-                            onChange={(event) =>
-                              setSwapTargetId(event.target.value)
-                            }
-                          >
-                            <option value="">Choose a member</option>
-                            {otherMembers.map((member) => (
-                              <option key={member.id} value={member.id}>
-                                {member.displayName}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <Button
-                          variant="outline"
-                          disabled={busy || !swapTargetId}
-                          onClick={() =>
-                            void runAction(
-                              () =>
-                                requestChoreSwap(
-                                  token,
-                                  household.id,
-                                  selected.id,
-                                  selected.revision,
-                                  swapTargetId,
-                                ),
-                              'Swap request sent.',
-                            )
-                          }
-                        >
-                          Request swap
-                        </Button>
-                      </div>
-                    )}
-                    {selected.canManage && (
-                      <div className="space-y-2 border-t pt-4">
-                        <label className="block space-y-1">
-                          <span>Reassign as owner or admin</span>
-                          <select
-                            className={fieldClass}
-                            value={reassignId}
-                            onChange={(event) =>
-                              setReassignId(event.target.value)
-                            }
-                          >
-                            <option value="">Choose a member</option>
-                            {otherMembers.map((member) => (
-                              <option key={member.id} value={member.id}>
-                                {member.displayName}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <Button
-                          variant="outline"
-                          disabled={busy || !reassignId}
-                          onClick={() =>
-                            void runAction(
-                              () =>
-                                reassignChore(
-                                  token,
-                                  household.id,
-                                  selected.id,
-                                  reassignId,
-                                  selected.revision,
-                                ),
-                              'Chore reassigned.',
-                            )
-                          }
-                        >
-                          Reassign
-                        </Button>
-                      </div>
-                    )}
-                  </>
-                )}
-                {selected.status !== 'open' && (
-                  <p className="border-t pt-4">
-                    {selected.status === 'completed' ? 'Completed' : 'Skipped'}{' '}
-                    by {selected.closedByDisplayName}
-                    {selected.closedAt
-                      ? ` on ${new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short', timeZone: selected.timezone }).format(new Date(selected.closedAt))}`
-                      : ''}
-                    .
-                    {selected.skipReason && (
-                      <span className="mt-2 block">
-                        Reason: {selected.skipReason}
-                      </span>
-                    )}
-                  </p>
-                )}
               </CardContent>
             </Card>
           )}
-        </div>
-      )}
-      {hasMore && !loadFailed && (
-        <Button
-          variant="outline"
-          onClick={() => void loadMore()}
-          disabled={loadingMore}
-          className={detailOpen ? 'max-lg:hidden' : ''}
-        >
-          {loadingMore ? 'Loading…' : 'Load more chores'}
-        </Button>
+          {(visible.length > 0 || selected) && (
+            <div
+              className={
+                selected && visible.length
+                  ? 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]'
+                  : 'space-y-4'
+              }
+            >
+              {visible.length > 0 && (
+                <Card className={selected ? 'max-lg:hidden' : undefined}>
+                  <CardContent className="space-y-2">
+                    {visible.map((chore) => (
+                      <HouseTaskRow
+                        key={chore.id}
+                        title={chore.title}
+                        status={chore.status}
+                        icon={ClipboardList}
+                        tone="blue"
+                        active={selectedId === chore.id}
+                        disabled={busy}
+                        onClick={(event) => {
+                          focus.row.current = event.currentTarget;
+                          setError('');
+                          setNotice('');
+                          setSkipReason('');
+                          setSwapTargetId('');
+                          setReassignId('');
+                          void open(chore.id);
+                        }}
+                      >
+                        {chore.assigneeDisplayName} · Due{' '}
+                        <time dateTime={chore.dueAt}>{dueLabel(chore)}</time>
+                        {chore.pendingSwap?.canRespond
+                          ? ' · Swap reply needed'
+                          : chore.pendingSwap
+                            ? ' · Swap requested'
+                            : ''}
+                      </HouseTaskRow>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+              {selected && (
+                <Card ref={focus.detail} tabIndex={-1} className="scroll-mt-6">
+                  <CardHeader>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="mb-2 self-start"
+                      disabled={busy}
+                      onClick={() => focus.back(close)}
+                    >
+                      Back to chores
+                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <CardTitle>{selected.title}</CardTitle>
+                      <Badge variant="outline" className="capitalize">
+                        {selected.status}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <p>
+                      Assigned to{' '}
+                      <strong>{selected.assigneeDisplayName}</strong>
+                    </p>
+                    <p>
+                      Due {dueLabel(selected)} · {selected.timezone}
+                    </p>
+                    {selected.note && (
+                      <p className="whitespace-pre-wrap">{selected.note}</p>
+                    )}
+                    <p className="text-sm text-muted-foreground">
+                      Created by {selected.createdByDisplayName}
+                    </p>
+                    {selected.status === 'open' && (
+                      <>
+                        {selected.canComplete && (
+                          <div className="space-y-3 border-t pt-4">
+                            <Button
+                              disabled={busy || browser.detailLoading}
+                              onClick={() =>
+                                void runAction(
+                                  () =>
+                                    completeChore(
+                                      token,
+                                      household.id,
+                                      selected.id,
+                                      selected.revision,
+                                    ),
+                                  'Chore completed.',
+                                )
+                              }
+                            >
+                              Mark complete
+                            </Button>
+                            <label className="block space-y-1">
+                              <span>Reason to skip</span>
+                              <textarea
+                                className={`${fieldClass} min-h-20`}
+                                maxLength={500}
+                                value={skipReason}
+                                onChange={(event) =>
+                                  setSkipReason(event.target.value)
+                                }
+                              />
+                            </label>
+                            <Button
+                              variant="outline"
+                              disabled={
+                                busy ||
+                                browser.detailLoading ||
+                                !skipReason.trim()
+                              }
+                              onClick={() =>
+                                void runAction(
+                                  () =>
+                                    skipChore(
+                                      token,
+                                      household.id,
+                                      selected.id,
+                                      selected.revision,
+                                      skipReason,
+                                    ),
+                                  'Chore skipped.',
+                                )
+                              }
+                            >
+                              Skip chore
+                            </Button>
+                          </div>
+                        )}
+                        {selected.pendingSwap && (
+                          <div className="space-y-2 border-t pt-4">
+                            <p>
+                              {selected.pendingSwap.requestedByDisplayName}{' '}
+                              asked {selected.pendingSwap.targetDisplayName} to
+                              take this chore.
+                            </p>
+                            {selected.pendingSwap.canRespond && (
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  disabled={busy || browser.detailLoading}
+                                  onClick={() => answerSwap('accepted')}
+                                >
+                                  Accept swap
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  disabled={busy || browser.detailLoading}
+                                  onClick={() => answerSwap('declined')}
+                                >
+                                  Decline
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {selected.canRequestSwap && (
+                          <div className="space-y-2 border-t pt-4">
+                            <label className="block space-y-1">
+                              <span>Ask someone to take this chore</span>
+                              <select
+                                className={fieldClass}
+                                value={swapTargetId}
+                                onChange={(event) =>
+                                  setSwapTargetId(event.target.value)
+                                }
+                              >
+                                <option value="">Choose a member</option>
+                                {otherMembers.map((member) => (
+                                  <option key={member.id} value={member.id}>
+                                    {member.displayName}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <Button
+                              variant="outline"
+                              disabled={
+                                busy || browser.detailLoading || !swapTargetId
+                              }
+                              onClick={() =>
+                                void runAction(
+                                  () =>
+                                    requestChoreSwap(
+                                      token,
+                                      household.id,
+                                      selected.id,
+                                      selected.revision,
+                                      swapTargetId,
+                                    ),
+                                  'Swap request sent.',
+                                )
+                              }
+                            >
+                              Request swap
+                            </Button>
+                          </div>
+                        )}
+                        {selected.canManage && (
+                          <div className="space-y-2 border-t pt-4">
+                            <label className="block space-y-1">
+                              <span>Reassign as owner or admin</span>
+                              <select
+                                className={fieldClass}
+                                value={reassignId}
+                                onChange={(event) =>
+                                  setReassignId(event.target.value)
+                                }
+                              >
+                                <option value="">Choose a member</option>
+                                {otherMembers.map((member) => (
+                                  <option key={member.id} value={member.id}>
+                                    {member.displayName}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <Button
+                              variant="outline"
+                              disabled={
+                                busy || browser.detailLoading || !reassignId
+                              }
+                              onClick={() =>
+                                void runAction(
+                                  () =>
+                                    reassignChore(
+                                      token,
+                                      household.id,
+                                      selected.id,
+                                      reassignId,
+                                      selected.revision,
+                                    ),
+                                  'Chore reassigned.',
+                                )
+                              }
+                            >
+                              Reassign
+                            </Button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {selected.status !== 'open' && (
+                      <p className="border-t pt-4">
+                        {selected.status === 'completed'
+                          ? 'Completed'
+                          : 'Skipped'}{' '}
+                        by {selected.closedByDisplayName}
+                        {selected.closedAt
+                          ? ` on ${new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short', timeZone: selected.timezone }).format(new Date(selected.closedAt))}`
+                          : ''}
+                        .
+                        {selected.skipReason && (
+                          <span className="mt-2 block">
+                            Reason: {selected.skipReason}
+                          </span>
+                        )}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+          {hasMore && !loading && (
+            <Button
+              variant="outline"
+              onClick={() => void browser.loadMore()}
+              disabled={loadingMore || busy}
+              className={selected ? 'max-lg:hidden' : undefined}
+            >
+              {loadingMore ? 'Loading…' : 'Load more chores'}
+            </Button>
+          )}
+        </>
       )}
     </div>
   );

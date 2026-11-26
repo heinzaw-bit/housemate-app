@@ -67,11 +67,17 @@ test('recent event rows remain visible during a fresh read and are replaced by i
   );
   render(<EventWorkspace household={household} token="session" compact />);
   expect(screen.getByText('House dinner')).toBeTruthy();
-  expect(screen.getByText(/Last updated.*Updating/)).toBeTruthy();
+  const refresh = screen.getByRole<HTMLButtonElement>('button', {
+    name: 'Refresh events',
+  });
+  expect(refresh.disabled).toBe(true);
+  expect(screen.queryByText(/^(?:Last )?Updated\s+\d/i)).toBeNull();
   expect(api.getEvents).toHaveBeenCalledTimes(1);
   await act(async () => finish([{ ...event, title: 'Updated dinner' }]));
   expect(screen.queryByText('House dinner')).toBeNull();
   expect(screen.getByText('Updated dinner')).toBeTruthy();
+  expect(refresh.disabled).toBe(false);
+  expect(screen.queryByText(/^(?:Last )?Updated\s+\d/i)).toBeNull();
 });
 test('a refresh network failure retains the snapshot with an outdated warning', async () => {
   vi.mocked(api.getEvents).mockRejectedValueOnce(

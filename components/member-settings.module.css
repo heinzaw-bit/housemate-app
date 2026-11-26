@@ -5,10 +5,10 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-bottom: 26px;
 }
 .identity > div {
   min-width: 0;
+  flex: 1;
 }
 .identity strong {
   font-size: 19px;
@@ -32,41 +32,19 @@
   font-size: 24px;
   font-weight: 800;
 }
-.tabs {
-  display: flex;
-  gap: 5px;
-  padding: 5px;
-  margin-bottom: 22px;
-  background: var(--secondary);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-}
-.tab {
-  flex: 1;
-  min-width: 0;
-  min-height: 44px;
-  padding: 10px;
-  border: 0;
-  border-radius: 11px;
-  color: var(--muted-foreground);
-  background: transparent;
-  font-weight: 700;
-  font-size: 14px;
-}
-.tab[data-active] {
-  color: var(--primary-foreground);
-  background: var(--primary);
-}
-.tab:hover:not([data-active]) {
-  color: var(--foreground);
-  background: var(--accent);
-}
-.panel {
+.panel,
+.householdGroup {
   display: grid;
   gap: 18px;
 }
-.panel[hidden] {
-  display: none;
+.householdGroup {
+  scroll-margin-top: 24px;
+}
+.groupTitle {
+  font-family: var(--font-design-heading), var(--font-sans), sans-serif;
+  font-size: 21px;
+  font-weight: 750;
+  margin: 0;
 }
 .card {
   display: block;
@@ -88,7 +66,8 @@
 .cardHeading > div {
   min-width: 0;
 }
-.card h2 {
+.card h2,
+.cardHeading h3 {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -97,7 +76,8 @@
   font-weight: 750;
   overflow-wrap: anywhere;
 }
-.card h2 svg {
+.card h2 svg,
+.cardHeading h3 svg {
   flex-shrink: 0;
 }
 .cardHeading p,
@@ -141,6 +121,13 @@
   font-weight: 650;
   overflow-wrap: anywhere;
   min-width: 0;
+}
+.currencyNote {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 400;
 }
 .actions {
   display: flex;
@@ -285,77 +272,85 @@
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding: 18px 0;
-  border-bottom: 1px solid var(--border);
-}
-.preferenceRow:first-child {
-  padding-top: 0;
-}
-.preferenceRow:last-child {
-  padding-bottom: 0;
-  border-bottom: 0;
+  padding: 16px 0;
 }
 .preferenceRow > div {
   min-width: 0;
 }
-.settingsLink {
-  display: inline-flex;
+.preferenceRow h3 {
+  font-weight: 650;
+}
+.navigationRow {
+  display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  color: var(--foreground);
+  border-radius: 8px;
+}
+a.navigationRow:hover {
+  color: var(--primary);
+}
+.navigationRow > svg,
+.navigationLabel > svg {
   flex-shrink: 0;
   color: var(--primary);
+}
+.navigationLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
-  font-weight: 750;
-  min-height: 44px;
+  font-weight: 650;
+}
+.accountDetails + .navigationRow {
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+}
+.settingSummary {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
 }
 .install {
-  border: 1px solid var(--border);
-  border-radius: 22px;
-  padding: 6px 26px;
-  background: var(--card);
+  border-top: 1px solid var(--border);
 }
 .install > section {
   margin: 0;
   border: 0;
-  padding: 20px 0;
+  padding: 16px 0 0;
   background: transparent;
 }
+.install > section > h2 {
+  font-size: 1rem;
+}
 @media (max-width: 600px) {
+  .identity {
+    flex-wrap: wrap;
+  }
+  .identity > div {
+    flex-basis: calc(100% - 68px);
+  }
   .card {
     padding: 20px;
     border-radius: 18px;
-  }
-  .tabs {
-    gap: 2px;
-    padding: 4px;
-  }
-  .tab {
-    padding: 8px 4px;
-    font-size: 12px;
   }
   .cardHeading {
     flex-wrap: wrap;
     gap: 12px;
   }
-  .card h2 {
+  .card h2,
+  .cardHeading h3 {
     font-size: 18px;
   }
   .preferenceRow {
     gap: 12px;
   }
-  .install {
-    padding: 4px 20px;
-    border-radius: 18px;
-  }
   .details > div {
     flex-wrap: wrap;
     gap: 6px;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .tab,
-  .panel {
-    transition: none;
-    animation: none;
   }
 }

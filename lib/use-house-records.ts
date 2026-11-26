@@ -13,6 +13,7 @@ export function useHouseRecords<T extends { id: string }, S extends string>({
   getRecord,
   focusedId,
   focusSignal,
+  pauseRefresh = false,
 }: {
   token: string;
   householdId: string;
@@ -28,6 +29,7 @@ export function useHouseRecords<T extends { id: string }, S extends string>({
   getRecord: (token: string, householdId: string, id: string) => Promise<T>;
   focusedId: string;
   focusSignal: number;
+  pauseRefresh?: boolean;
 }) {
   const readPath = cacheResource
     ? householdReadPath(
@@ -164,6 +166,13 @@ export function useHouseRecords<T extends { id: string }, S extends string>({
     setUpdatedAt(snapshot ? new Date(snapshot.readAt).toISOString() : '');
     close();
     void refresh();
+    return () => {
+      pageRequest.current += 1;
+    };
+  }, [refresh, readPath, cacheResource, token, close]);
+
+  useEffect(() => {
+    if (pauseRefresh) return;
     const onReturn = () => {
       if (document.visibilityState === 'visible' && navigator.onLine)
         void refresh(true);
@@ -173,13 +182,12 @@ export function useHouseRecords<T extends { id: string }, S extends string>({
     document.addEventListener('visibilitychange', onReturn);
     const timer = window.setInterval(onReturn, 15_000);
     return () => {
-      pageRequest.current += 1;
       window.removeEventListener('focus', onReturn);
       window.removeEventListener('online', onReturn);
       document.removeEventListener('visibilitychange', onReturn);
       window.clearInterval(timer);
     };
-  }, [refresh, readPath, cacheResource, token, close]);
+  }, [pauseRefresh, refresh]);
   useEffect(() => {
     if (focusedId && focusSignal) void open(focusedId);
     return () => {

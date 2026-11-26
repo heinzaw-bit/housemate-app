@@ -8,10 +8,22 @@ import { AuthProvider } from '@/lib/auth-context';
 import { themeInitScript } from '@/lib/theme';
 import { ThemeProvider } from '@/lib/theme-context';
 import './globals.css';
-import { Geist } from 'next/font/google';
+import './workspace-design.css';
+import localFont from 'next/font/local';
 import { cn } from '@/lib/utils';
 
-const geist = Geist({ subsets: ['latin'], variable: '--font-sans' });
+const dmSans = localFont({
+  src: '../node_modules/@fontsource-variable/dm-sans/files/dm-sans-latin-wght-normal.woff2',
+  variable: '--font-sans',
+  display: 'swap',
+  weight: '100 900',
+});
+const manrope = localFont({
+  src: '../node_modules/@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2',
+  variable: '--font-design-heading',
+  display: 'swap',
+  weight: '200 800',
+});
 
 export const metadata: Metadata = {
   title: 'HouseMate — House life, in sync',
@@ -37,7 +49,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="en"
-      className={cn('font-sans', geist.variable)}
+      data-scroll-behavior="smooth"
+      className={cn('font-sans', dmSans.variable, manrope.variable)}
       suppressHydrationWarning
     >
       <head>

@@ -1,24 +1,33 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { BalanceWorkspace } from '../components/balance-workspace';
 import { BillWorkspace } from '../components/bill-workspace';
 import { ExpenseWorkspace } from '../components/expense-workspace';
+import { MoneyWorkspace } from '../components/money-workspace';
 import * as api from '../lib/api';
+import { previewDashboard } from '../lib/preview-dashboard';
 
+const { push } = vi.hoisted(() => ({ push: vi.fn() }));
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(window.location.search),
+  useRouter: () => ({ push }),
+}));
 vi.mock('../lib/api', async (original) => ({
   ...(await original<typeof import('../lib/api')>()),
   getMembers: vi.fn(),
   getBills: vi.fn(),
   getExpenses: vi.fn(),
   getBill: vi.fn(),
+  setBillStatus: vi.fn(),
   getExpense: vi.fn(),
   getBillHistory: vi.fn(),
   getExpenseHistory: vi.fn(),
   getBalances: vi.fn(),
   getSettlements: vi.fn(),
-  getBalanceEntries: vi.fn(),
+  previewSettlement: vi.fn(),
+  createSettlement: vi.fn(),
   previewBillVoid: vi.fn(),
   previewExpenseVoid: vi.fn(),
 }));
@@ -107,7 +116,23 @@ function bill(i: number): api.Bill {
     })),
   };
 }
+function transfer(i: number): api.Settlement {
+  return {
+    id: `transfer-${i}`,
+    householdId: 'home',
+    senderMemberId: 'one',
+    recipientMemberId: 'two',
+    senderDisplayName: `Sender ${i}`,
+    recipientDisplayName: 'Lin',
+    amountMinor: 100,
+    currency: 'THB',
+    settledOn: '2026-10-03',
+    recordedByDisplayName: 'Aye',
+    createdAt: '2026-10-03T00:00:00Z',
+  };
+}
 beforeEach(() => {
+  window.history.replaceState(null, '', '/money?household=home');
   vi.stubGlobal(
     'matchMedia',
     vi.fn(() => ({
@@ -136,7 +161,6 @@ beforeEach(() => {
     events: [],
     hasMore: false,
   });
-  vi.mocked(api.getBalanceEntries).mockResolvedValue([]);
   vi.mocked(api.getSettlements).mockResolvedValue([]);
 });
 afterEach(() => {
@@ -178,6 +202,15 @@ for (const kind of ['bill', 'expense'] as const) {
       screen.getByRole('button', { name: new RegExp(`${cap} 1`) }),
     );
     await screen.findByRole('heading', { name: `${cap} 1` });
+    if (kind === 'expense') {
+      expect(
+        screen.getByRole('heading', { name: 'Each person’s share' }),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('heading', { name: 'Change history' }),
+      ).toBeNull();
+      expect(api.getExpenseHistory).not.toHaveBeenCalled();
+    }
     const hide = screen.getByRole('button', { name: 'Hide details' });
     const panel = document.getElementById(
       hide.getAttribute('aria-controls') ?? '',
@@ -252,15 +285,86 @@ for (const kind of ['bill', 'expense'] as const) {
   });
 }
 
-test('balance cards expand sources, suggestions and transfers independently inline', async () => {
+test.each(['member', 'admin'] as const)(
+  'saved bill controls respect the %s role',
+  async (role) => {
+    // Older responses could still grant a regular bill creator edit and removal.
+    render(
+      <BillWorkspace
+        household={{ ...household, role }}
+        token="session"
+        initialRecordId="bill-1"
+        onMoneyChanged={vi.fn()}
+      />,
+    );
+    await screen.findByRole('heading', { name: 'Bill 1' });
+    expect(screen.getByText('Provider status')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Add bill' })).toBeTruthy();
+    for (const name of ['Edit bill', 'Remove mistaken bill', 'Mark Paid']) {
+      const control = screen.queryByRole('button', { name });
+      expect(Boolean(control)).toBe(role === 'admin');
+    }
+    expect(screen.queryByRole('button', { name: 'Mark Unpaid' })).toBeNull();
+  },
+);
+
+test('saving a provider payment refreshes the unpaid bill total from the API', async () => {
+  window.history.replaceState(null, '', '/money?household=home&view=bills');
   const user = userEvent.setup();
-  const suggestions = Array.from({ length: 3 }, (_, i) => ({
-    senderMemberId: 'one',
-    senderDisplayName: 'Aye',
-    recipientMemberId: `recipient-${i}`,
-    recipientDisplayName: `Recipient ${i}`,
-    amountMinor: 100 + i,
-  }));
+  let savedBills = [bill(1), bill(2)];
+  let finishFirstSave!: () => void;
+  const firstSave = new Promise<void>((resolve) => {
+    finishFirstSave = resolve;
+  });
+  vi.mocked(api.getBills).mockImplementation(async () => savedBills);
+  vi.mocked(api.getBill).mockImplementation(
+    async (_token, _household, id) =>
+      savedBills.find((item) => item.id === id) ?? bill(1),
+  );
+  vi.mocked(api.getBalances).mockImplementation(async () => {
+    const unpaid = savedBills.filter((item) => item.paymentStatus === 'unpaid');
+    return {
+      ...previewDashboard(household).balance,
+      pendingBillCount: unpaid.length,
+      pendingBillAmountMinor: unpaid.reduce(
+        (sum, item) => sum + item.amountMinor,
+        0,
+      ),
+    };
+  });
+  vi.mocked(api.setBillStatus).mockImplementation(
+    async (_token, _household, id, paymentStatus) => {
+      if (id === 'bill-1') await firstSave;
+      const saved = savedBills.find((item) => item.id === id);
+      if (!saved) throw new Error('Missing bill fixture');
+      const updated = { ...saved, paymentStatus, revision: saved.revision + 1 };
+      savedBills = savedBills.map((item) => (item.id === id ? updated : item));
+      return updated;
+    },
+  );
+
+  render(<MoneyWorkspace household={household} token="session" />);
+  const totals = within(
+    await screen.findByRole('region', { name: 'Money overview' }),
+  );
+  await totals.findByText('2 bills still due to providers');
+  expect(totals.getByText('฿200.00 THB')).toBeTruthy();
+  await user.click(await screen.findByRole('button', { name: /^Bill 1 / }));
+  await user.click(await screen.findByRole('button', { name: 'Mark Paid' }));
+  expect(totals.getByText('฿200.00 THB')).toBeTruthy();
+  finishFirstSave();
+  await totals.findByText('1 bill still due to a provider');
+  expect(totals.getByText('฿100.00 THB')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Mark Unpaid' })).toBeTruthy();
+
+  await user.click(screen.getByRole('button', { name: /^Bill 2 / }));
+  await user.click(await screen.findByRole('button', { name: 'Mark Paid' }));
+  await totals.findByText('No provider bills to pay');
+  expect(totals.getByText('฿0.00 THB')).toBeTruthy();
+});
+
+test('Overview and Settlements show member balances and expand their own transfer lists', async () => {
+  const user = userEvent.setup();
   vi.mocked(api.getBalances).mockResolvedValue({
     householdId: 'home',
     currency: 'THB',
@@ -285,71 +389,231 @@ test('balance cards expand sources, suggestions and transfers independently inli
         owedMinor: 300,
       },
     ],
-    suggestions,
+    suggestions: [
+      {
+        senderMemberId: 'one',
+        senderDisplayName: 'Aye',
+        recipientMemberId: 'two',
+        recipientDisplayName: 'Lin',
+        amountMinor: 100,
+      },
+    ],
   });
   vi.mocked(api.getSettlements).mockResolvedValue(
-    Array.from({ length: 4 }, (_, i) => ({
-      id: `transfer-${i}`,
-      householdId: 'home',
-      senderMemberId: 'one',
-      recipientMemberId: 'two',
-      senderDisplayName: `Sender ${i}`,
-      recipientDisplayName: 'Lin',
-      amountMinor: 100,
-      currency: 'THB',
-      settledOn: '2026-10-03',
-      recordedByDisplayName: 'Aye',
-      createdAt: '2026-10-03T00:00:00Z',
-    })),
+    Array.from({ length: 3 }, (_, i) => transfer(i)),
   );
-  vi.mocked(api.getBalanceEntries).mockResolvedValue(
-    Array.from({ length: 4 }, (_, i) => ({
-      sourceType: 'expense',
-      sourceId: `expense-${i}`,
-      title: `Source ${i}`,
-      occurredOn: '2026-10-03',
-      paidMinor: 0,
-      shareMinor: 100,
-      sentMinor: 0,
-      receivedMinor: 0,
-      effectMinor: -100,
-    })),
+  const view = render(
+    <BalanceWorkspace key="overview" household={household} token="session" />,
   );
-  render(
+  await screen.findByRole('heading', { name: 'Recent activity' });
+  expect(
+    screen.queryByRole('heading', { name: 'Balances & transfers' }),
+  ).toBeNull();
+  const overviewBalances = within(
+    screen.getByRole('region', { name: 'Member balances' }),
+  );
+  expect(overviewBalances.getByText('You owe ฿3.00')).toBeTruthy();
+  expect(overviewBalances.getByText('Is owed ฿3.00')).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: 'View balance breakdown' }),
+  ).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Record transfer' })).toBeNull();
+  expect(
+    screen.getByRole('link', { name: /Sender 2/ }).getAttribute('href'),
+  ).toBe('/money?household=home&view=balances&record=transfer-2');
+  expect(screen.queryByText(/Sender 0/)).toBeNull();
+  const overviewUrl = window.location.href;
+  const viewAll = screen.getByRole('button', {
+    name: 'View all recorded transfers',
+  });
+  expect(viewAll.getAttribute('aria-expanded')).toBe('false');
+  await user.click(viewAll);
+  expect(window.location.href).toBe(overviewUrl);
+  expect(screen.getByRole('heading', { name: 'Recent activity' })).toBeTruthy();
+  expect(
+    screen.getByRole('link', { name: /Sender 0/ }).getAttribute('href'),
+  ).toBe('/money?household=home&view=balances&record=transfer-0');
+  await user.click(
+    screen.getByRole('button', { name: 'Show fewer recorded transfers' }),
+  );
+  expect(screen.queryByText(/Sender 0/)).toBeNull();
+  window.history.replaceState({}, '', '/money?household=home&view=balances');
+  const settlementsUrl = window.location.href;
+  view.rerender(
     <BalanceWorkspace
+      key="settlements"
       household={household}
       token="session"
-      onMoneyChanged={vi.fn()}
+      settlementView
     />,
   );
-  const sources = await screen.findByRole('button', {
-    name: 'View all balance sources',
-  });
-  expect(screen.queryByText('Source 3')).toBeNull();
-  expect(screen.queryByText('Recipient 2')).toBeNull();
+  await screen.findByRole('heading', { name: 'Recorded transfers' });
+  expect(screen.queryByRole('heading', { name: 'Recent activity' })).toBeNull();
+  expect(screen.getByText(/Sender 2/)).toBeTruthy();
   expect(screen.queryByText(/Sender 0/)).toBeNull();
-  await user.click(sources);
-  await screen.findByText('Source 3');
+  const viewAllTransfers = screen.getByRole('button', {
+    name: 'View all recorded transfers',
+  });
+  expect(viewAllTransfers.textContent).toBe('View all');
+  expect(viewAllTransfers.getAttribute('aria-expanded')).toBe('false');
+  await user.click(viewAllTransfers);
+  await screen.findByText(/Sender 0/);
+  expect(window.location.href).toBe(settlementsUrl);
+  expect(screen.getByRole('region', { name: 'Member balances' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Record transfer' })).toBeNull();
+  expect(screen.queryByText('Suggested transfers')).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'Record after paying' }),
+  ).toBeNull();
   await user.click(
-    screen.getByRole('button', { name: 'View all suggested transfers' }),
+    screen.getByRole('button', { name: 'Show fewer recorded transfers' }),
   );
-  await screen.findByText('Recipient 2');
+  expect(screen.queryByText(/Sender 0/)).toBeNull();
   await user.click(
     screen.getByRole('button', { name: 'View all recorded transfers' }),
   );
   await screen.findByText(/Sender 0/);
   expect(screen.queryByRole('dialog')).toBeNull();
-  await user.click(
-    screen.getByRole('button', { name: 'Show fewer suggested transfers' }),
+});
+
+test('the owner can open Record transfer, review a draft, and confirm it', async () => {
+  const user = userEvent.setup();
+  vi.mocked(api.getBalances).mockResolvedValue({
+    ...previewDashboard(household).balance,
+    viewerMemberId: 'one',
+    members: members.map((member) => ({
+      memberId: member.id,
+      displayName: member.displayName,
+      status: 'active',
+      netMinor: 0,
+      owesMinor: 0,
+      owedMinor: 0,
+    })),
+  });
+  vi.mocked(api.previewSettlement).mockImplementation(
+    async (_t, _h, draft) => ({
+      ...draft,
+      senderDisplayName: 'Lin',
+      recipientDisplayName: 'Aye',
+      senderBeforeMinor: -100,
+      receiverBeforeMinor: 100,
+      senderAfterMinor: 0,
+      receiverAfterMinor: 0,
+      recommendedAmountMinor: 100,
+      warnings: [],
+    }),
   );
-  expect(screen.queryByText('Recipient 2')).toBeNull();
-  expect(screen.getByText('Source 3')).toBeTruthy();
-  await user.click(
-    screen.getByRole('button', { name: 'Show fewer balance sources' }),
+  vi.mocked(api.createSettlement).mockImplementation(async (_t, _h, draft) => ({
+    ...transfer(0),
+    ...draft,
+    senderDisplayName: 'Lin',
+    recipientDisplayName: 'Aye',
+  }));
+  const view = render(<MoneyWorkspace household={household} token="session" />);
+  const nav = within(
+    screen.getByRole('navigation', { name: 'Money sections' }),
   );
-  expect(screen.queryByText('Source 3')).toBeNull();
+  const settlementsTab = nav.getByRole<HTMLButtonElement>('button', {
+    name: 'Settlements',
+  });
+  const recordTab = nav.getByRole('button', { name: 'Record transfer' });
+  expect(settlementsTab.nextElementSibling).toBe(recordTab);
+  await user.click(recordTab);
+  const recordUrl = '/money?household=home&view=record-transfer';
+  expect(push).toHaveBeenCalledWith(recordUrl, { scroll: false });
+  window.history.replaceState({}, '', recordUrl);
+  view.rerender(<MoneyWorkspace household={household} token="session" />);
+  expect(recordTab.getAttribute('aria-current')).toBe('page');
+  const direction = await screen.findByLabelText('What happened?');
+  expect(settlementsTab.disabled).toBe(false);
+  await user.selectOptions(direction, 'received');
+  const amount = screen.getByLabelText<HTMLInputElement>('Amount (THB)');
+  await user.selectOptions(screen.getByLabelText('Received from'), 'two');
+  await user.type(amount, '1.00');
+  expect(settlementsTab.disabled).toBe(true);
   await user.click(
-    screen.getByRole('button', { name: 'Show fewer recorded transfers' }),
+    screen.getByRole('button', { name: 'Preview balance effect' }),
   );
-  expect(screen.queryByText(/Sender 0/)).toBeNull();
+  expect(api.previewSettlement).toHaveBeenCalledWith(
+    'session',
+    'home',
+    expect.objectContaining({
+      senderMemberId: 'two',
+      recipientMemberId: 'one',
+      amountMinor: 100,
+    }),
+  );
+  expect(api.createSettlement).not.toHaveBeenCalled();
+  await user.click(
+    await screen.findByRole('button', { name: 'Confirm recorded transfer' }),
+  );
+  await screen.findByText('Lin → Aye: ฿1.00 recorded.');
+  expect(api.createSettlement).toHaveBeenCalledWith(
+    'session',
+    'home',
+    vi.mocked(api.previewSettlement).mock.calls[0][2],
+    expect.any(String),
+  );
+  expect(amount.value).toBe('');
+  expect(settlementsTab.disabled).toBe(false);
+});
+
+test.each(['admin', 'member'] as const)(
+  '%s cannot open the Record transfer tab by URL',
+  async (role) => {
+    window.history.replaceState(
+      {},
+      '',
+      '/money?household=home&view=record-transfer',
+    );
+    vi.mocked(api.getBalances).mockResolvedValue(
+      previewDashboard(household).balance,
+    );
+    render(
+      <MoneyWorkspace household={{ ...household, role }} token="session" />,
+    );
+    await screen.findByRole('heading', { name: 'Recent activity' });
+    expect(
+      screen
+        .getByRole('button', { name: 'Overview' })
+        .getAttribute('aria-current'),
+    ).toBe('page');
+    expect(
+      screen.queryByRole('button', { name: 'Record transfer' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Preview balance effect' }),
+    ).toBeNull();
+  },
+);
+
+test('expanded Overview activity can load older transfers and keeps them on refresh', async () => {
+  const user = userEvent.setup();
+  const firstPage = Array.from({ length: 50 }, (_, i) => transfer(i));
+  vi.mocked(api.getBalances).mockResolvedValue(
+    previewDashboard(household).balance,
+  );
+  vi.mocked(api.getSettlements).mockImplementation(
+    async (_token, _household, _limit, offset) =>
+      offset === 50 ? [transfer(50)] : firstPage,
+  );
+  render(<BalanceWorkspace household={household} token="session" />);
+  await user.click(
+    await screen.findByRole('button', { name: 'View all recorded transfers' }),
+  );
+  await user.click(screen.getByRole('button', { name: 'Load more transfers' }));
+  await screen.findByRole('link', { name: /^Sender 50 / });
+  expect(api.getSettlements).toHaveBeenLastCalledWith(
+    'session',
+    'home',
+    50,
+    50,
+  );
+
+  await act(async () => {
+    window.dispatchEvent(new Event('focus'));
+  });
+  expect(api.getSettlements).toHaveBeenCalledTimes(4);
+  expect(screen.getByRole('link', { name: /^Sender 50 / })).toBeTruthy();
+  expect(window.location.search).toBe('?household=home');
 });
