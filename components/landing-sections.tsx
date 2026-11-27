@@ -1,6 +1,5 @@
 'use client';
 
-import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { type ReactNode, useEffect, useRef } from 'react';
 import { Brand } from './brand';
@@ -103,11 +102,8 @@ export function LandingSections({
         </nav>
         <div className="landing-header-actions">
           <ThemeToggle />
-          <Link href="/sign-in" className="landing-sign-in">
+          <Link href="/sign-in" className="landing-button landing-sign-in">
             Sign in
-          </Link>
-          <Link href="/sign-in" className="landing-button landing-header-cta">
-            Get started <ArrowRight size={16} aria-hidden="true" />
           </Link>
         </div>
       </header>

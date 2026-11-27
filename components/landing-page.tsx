@@ -1,13 +1,10 @@
 import {
   ArrowRight,
   Bell,
-  CalendarDays,
   Check,
   ClipboardList,
-  Heart,
   Home,
   ListChecks,
-  ReceiptText,
   ShieldCheck,
   UsersRound,
   WalletCards,
@@ -21,24 +18,21 @@ import { LandingTour } from './landing-tour';
 const features = [
   {
     icon: WalletCards,
-    number: '01',
-    title: 'Make shared money clear.',
+    title: 'Split bills and expenses',
     description:
       'Split expenses and bills, understand your balance, and record repayments.',
     tags: ['Flexible splits', 'Clear balances', 'Traceable changes'],
   },
   {
     icon: ListChecks,
-    number: '02',
-    title: 'Keep daily life organized.',
+    title: 'Share the everyday work',
     description:
       'Share the chores, keep shopping in one place, and plan who’s joining dinner.',
     tags: ['Chores', 'Shopping', 'Meals'],
   },
   {
     icon: Bell,
-    number: '03',
-    title: 'Keep everyone in the loop.',
+    title: 'Keep everyone in the loop',
     description:
       'Share announcements, plan events, and collect votes without losing the details.',
     tags: ['Announcements', 'Events', 'Polls'],
@@ -81,36 +75,28 @@ export function LandingPage() {
                 aria-labelledby="landing-title"
               >
                 <div className="landing-hero-copy">
-                  <p className="landing-kicker">
-                    <span /> A SHARED HOME. A LITTLE MORE IN SYNC.
-                  </p>
                   <h1 id="landing-title">
-                    House life,
-                    <br />
-                    <span>in sync.</span>
+                    Share a home. <span>Stay in sync.</span>
                   </h1>
                   <p className="landing-hero-description">
-                    Split expenses, organize chores, plan meals, and keep
-                    everyone informed—all in one place.
+                    Split bills, coordinate chores, and plan meals with your
+                    housemates in one place.
                   </p>
                   <div className="landing-hero-actions">
                     <Link href="/sign-in" className="landing-button">
-                      Get started <ArrowRight size={18} aria-hidden="true" />
+                      Set up a household{' '}
+                      <ArrowRight size={18} aria-hidden="true" />
                     </Link>
                     <a
-                      href="#how-it-works"
+                      href="#tour"
                       className="landing-button landing-button-secondary"
                     >
-                      See how it works
+                      Take a tour
                     </a>
                   </div>
-                  <p className="landing-audience">
-                    <span className="landing-avatar-stack" aria-hidden="true">
-                      <span>A</span>
-                      <span>L</span>
-                      <span>S</span>
-                    </span>
-                    For the people you share a home with.
+                  <p className="landing-invite-note">
+                    <strong>Have an invitation?</strong> Open the link from your
+                    housemate to join their household.
                   </p>
                 </div>
                 <div className="landing-hero-visual">
@@ -123,31 +109,8 @@ export function LandingPage() {
                     </div>
                     <HomePreview />
                   </div>
-                  <div className="landing-visual-note">
-                    <span>
-                      <Heart size={18} aria-hidden="true" />
-                    </span>
-                    <div>
-                      <strong>Better together.</strong>
-                      <small>A little less chasing. A little more home.</small>
-                    </div>
-                  </div>
                 </div>
               </section>
-              <div className="landing-capabilities landing-container">
-                <span>
-                  <ReceiptText size={18} aria-hidden="true" /> Shared expenses
-                </span>
-                <span>
-                  <ListChecks size={18} aria-hidden="true" /> Everyday teamwork
-                </span>
-                <span>
-                  <CalendarDays size={18} aria-hidden="true" /> Plans together
-                </span>
-                <span>
-                  <Bell size={18} aria-hidden="true" /> Household updates
-                </span>
-              </div>
             </>
           ),
         },
@@ -160,39 +123,27 @@ export function LandingPage() {
               aria-labelledby="landing-features-title"
             >
               <div className="landing-section-intro">
-                <p className="landing-kicker">ONE HOME. ONE SHARED PLACE.</p>
-                <h2 id="landing-features-title">
-                  Less to keep track of.
-                  <br />
-                  More room for living.
-                </h2>
-                <p>
-                  From the monthly bills to tonight’s dinner, everyone can find
-                  the next step.
-                </p>
+                <h2 id="landing-features-title">What you can do</h2>
               </div>
               <div className="landing-feature-grid">
-                {features.map(
-                  ({ icon: Icon, number, title, description, tags }) => (
-                    <article key={number} className="landing-feature-card">
-                      <div className="landing-feature-top">
-                        <span>
-                          <Icon size={23} aria-hidden="true" />
-                        </span>
-                        <small>{number}</small>
-                      </div>
-                      <h3>{title}</h3>
-                      <p>{description}</p>
-                      <ul>
-                        {tags.map((tag) => (
-                          <li key={tag}>
-                            <Check size={14} aria-hidden="true" /> {tag}
-                          </li>
-                        ))}
-                      </ul>
-                    </article>
-                  ),
-                )}
+                {features.map(({ icon: Icon, title, description, tags }) => (
+                  <article key={title} className="landing-feature-card">
+                    <div className="landing-feature-top">
+                      <span>
+                        <Icon size={23} aria-hidden="true" />
+                      </span>
+                    </div>
+                    <h3>{title}</h3>
+                    <p>{description}</p>
+                    <ul>
+                      {tags.map((tag) => (
+                        <li key={tag}>
+                          <Check size={14} aria-hidden="true" /> {tag}
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                ))}
               </div>
             </section>
           ),
@@ -207,26 +158,24 @@ export function LandingPage() {
             >
               <div className="landing-container">
                 <div className="landing-section-intro">
-                  <p className="landing-kicker">MAKE YOURSELF AT HOME</p>
-                  <h2 id="landing-how-title">Start with your people.</h2>
-                  <p>A few simple steps to a more organized shared home.</p>
+                  <h2 id="landing-how-title">How to get started</h2>
                 </div>
                 <ol className="landing-steps">
                   {[
                     {
                       icon: Home,
-                      title: 'Create your household',
-                      text: 'Sign in and give your shared home a name. Choose its currency and timezone.',
+                      title: 'Sign in',
+                      text: 'Use Google or receive a sign-in link by email.',
                     },
                     {
                       icon: UsersRound,
-                      title: 'Invite your housemates',
-                      text: 'Send an invitation link so everyone can join the same household.',
+                      title: 'Create or join a household',
+                      text: 'Set up a new household, or open your invitation link to join an existing one.',
                     },
                     {
                       icon: ClipboardList,
-                      title: 'Start coordinating',
-                      text: 'Add a shared expense, plan a meal, or give the next chore a clear owner.',
+                      title: 'Add your first shared item',
+                      text: 'Invite housemates, then add an expense, plan a meal, or assign a chore.',
                     },
                   ].map(({ icon: Icon, title, text }, index) => (
                     <li key={title}>
@@ -252,12 +201,7 @@ export function LandingPage() {
               aria-labelledby="landing-product-title"
             >
               <div className="landing-section-intro">
-                <p className="landing-kicker">A LOOK INSIDE</p>
-                <h2 id="landing-product-title">
-                  Clear at a glance.
-                  <br />
-                  Useful every day.
-                </h2>
+                <h2 id="landing-product-title">Take a quick tour</h2>
               </div>
               <LandingTour />
             </section>
@@ -304,12 +248,7 @@ export function LandingPage() {
                 aria-labelledby="landing-faq-title"
               >
                 <div>
-                  <p className="landing-kicker">A FEW THINGS TO KNOW</p>
-                  <h2 id="landing-faq-title">
-                    Make yourself
-                    <br />
-                    comfortable.
-                  </h2>
+                  <h2 id="landing-faq-title">Common questions</h2>
                 </div>
                 <div>
                   {questions.map(([question, answer]) => (
@@ -324,10 +263,8 @@ export function LandingPage() {
                 </div>
               </section>
               <div className="landing-section-cta landing-container">
-                <p>Your shared home, on the same page.</p>
                 <Link href="/sign-in" className="landing-button">
-                  Create your household{' '}
-                  <ArrowRight size={18} aria-hidden="true" />
+                  Set up a household <ArrowRight size={18} aria-hidden="true" />
                 </Link>
               </div>
             </>

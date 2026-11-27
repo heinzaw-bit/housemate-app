@@ -1,7 +1,7 @@
 'use client';
 
 import { AlertCircle, ArrowRight, LoaderCircle, RefreshCw } from 'lucide-react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import {
   AccountSwitchBlockedError,
@@ -43,6 +43,7 @@ export function AppView({ section }: { section: Section }) {
 
 function AccountView({ section }: { section: Section }) {
   const { client, session, checking, configured, error: authError } = useAuth();
+  const router = useRouter();
   const [data, setData] = useState<LoadedData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -215,8 +216,7 @@ function AccountView({ section }: { section: Section }) {
         setSignOutError(describeAuthFailure(authError, 'signout'));
       } else {
         window.localStorage.removeItem('housemate.selectedHousehold');
-        window.history.replaceState(null, '', window.location.pathname);
-        setSelectedId(null);
+        router.replace('/sign-in?signed-out=1');
       }
     } catch (failure) {
       setSignOutError(
@@ -281,6 +281,7 @@ function AccountView({ section }: { section: Section }) {
         configured={configured}
         callbackError={authError}
         joinPending={Boolean(pendingInvite)}
+        signedOut={routeParams.get('signed-out') === '1'}
       />
     );
 

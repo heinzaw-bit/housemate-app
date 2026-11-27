@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
@@ -345,6 +346,46 @@ test('sign-in controls and installation help have accessible names and semantic 
     <AuthScreen client={null} configured={false} callbackError="" />,
   );
   await checkStructure(container);
+});
+
+test('sign-in shows invitation context and focuses the email receipt and retry field', async () => {
+  const signInWithOtp = vi.fn().mockResolvedValue({ error: null });
+  const client = { auth: { signInWithOtp } } as unknown as SupabaseClient;
+  const user = userEvent.setup();
+  render(
+    <AuthScreen
+      client={client}
+      configured
+      callbackError=""
+      joinPending
+      signedOut
+    />,
+  );
+  expect(
+    screen.getByRole('heading', { name: 'Join your household' }),
+  ).toBeTruthy();
+  expect(screen.getByText('You’ve signed out.')).toBeTruthy();
+  await user.type(
+    screen.getByRole('textbox', { name: 'Email address' }),
+    'housemate@example.test',
+  );
+  await user.click(screen.getByRole('button', { name: 'Send sign-in link' }));
+  const receipt = await screen.findByRole('heading', {
+    name: 'Check your inbox',
+  });
+  expect(document.activeElement).toBe(receipt);
+  expect(signInWithOtp).toHaveBeenCalledExactlyOnceWith({
+    email: 'housemate@example.test',
+    options: { emailRedirectTo: window.location.origin },
+  });
+  await user.click(
+    screen.getByRole('button', { name: 'Use a different email' }),
+  );
+  const field = screen.getByRole<HTMLInputElement>('textbox', {
+    name: 'Email address',
+  });
+  expect(document.activeElement).toBe(field);
+  expect(field.value).toBe('');
 });
 
 test('a lost removal reply can retry its original key even after the preview deadline passes', async () => {
