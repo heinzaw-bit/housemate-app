@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
@@ -9,7 +10,7 @@ import type { ApiUser } from '../lib/api';
 import * as api from '../lib/api';
 
 const auth = vi.hoisted(() => ({
-  client: null,
+  client: null as SupabaseClient | null,
   session: { access_token: 'token-a', user: { id: 'account-a' } },
   checking: false,
   configured: true,
@@ -29,6 +30,7 @@ vi.mock('../components/workspace', () => ({
     households,
     onCreateHousehold,
     onSelectHousehold,
+    onSignOut,
   }: ComponentProps<typeof import('../components/workspace').Workspace>) => (
     <div>
       <div>Account: {me.displayName}</div>
@@ -39,6 +41,9 @@ vi.mock('../components/workspace', () => ({
       </button>
       <button type="button" onClick={() => onSelectHousehold('other')}>
         Switch household
+      </button>
+      <button type="button" onClick={onSignOut}>
+        Sign out
       </button>
     </div>
   ),
@@ -79,6 +84,7 @@ const user = (id: string): ApiUser => ({
   email: `${id}@example.test`,
 });
 beforeEach(() => {
+  auth.client = null;
   localStorage.clear();
   window.history.replaceState(null, '', '/');
   auth.session = { access_token: 'token-a', user: { id: 'account-a' } };
@@ -93,6 +99,25 @@ beforeEach(() => {
       createdAt: '2026-01-01T00:00:00Z',
     },
   ]);
+});
+
+test('successful sign-out clears the household selection and opens sign-in with confirmation', async () => {
+  const signOut = vi.fn().mockResolvedValue({ error: null });
+  auth.client = { auth: { signOut } } as unknown as SupabaseClient;
+  vi.mocked(api.getMe).mockResolvedValue(user('account-a'));
+  localStorage.setItem('housemate.selectedHousehold', 'home');
+  render(<AppView section="profile" />);
+  await screen.findByText('Active household: Home');
+  await userEvent
+    .setup()
+    .click(screen.getByRole('button', { name: 'Sign out' }));
+  await waitFor(() =>
+    expect(router.replace).toHaveBeenCalledExactlyOnceWith(
+      '/sign-in?signed-out=1',
+    ),
+  );
+  expect(signOut).toHaveBeenCalledExactlyOnceWith({ scope: 'local' });
+  expect(localStorage.getItem('housemate.selectedHousehold')).toBeNull();
 });
 afterEach(() => {
   cleanup();

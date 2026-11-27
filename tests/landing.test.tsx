@@ -16,13 +16,16 @@ test('landing actions reach sign-in and every internal anchor exists', async () 
   document.title = 'HouseMate';
   const { container } = render(<LandingPage />);
   expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
-    'House life,in sync.',
+    'Share a home. Stay in sync.',
   );
+  const entryLinks = screen.getAllByRole('link', {
+    name: /Set up a household|^Sign in$/,
+  });
+  expect(entryLinks).toHaveLength(4);
   expect(
-    screen
-      .getAllByRole('link', { name: /Get started|Create your household/ })
-      .every((link) => link.getAttribute('href') === '/sign-in'),
+    entryLinks.every((link) => link.getAttribute('href') === '/sign-in'),
   ).toBe(true);
+  expect(screen.getByText('Have an invitation?')).toBeTruthy();
   for (const link of container.querySelectorAll('a[href^="#"]')) {
     const id = link.getAttribute('href')?.slice(1);
     expect(container.querySelector(`[id="${id}"]`)).toBeTruthy();
@@ -174,7 +177,7 @@ test.each(['reduced motion', 'unsupported observer', 'failed observer'])(
       container.querySelector('[hidden], [data-reveal="pending"]'),
     ).toBeNull();
     expect(
-      screen.getByRole('heading', { name: 'Make yourself comfortable.' }),
+      screen.getByRole('heading', { name: 'Common questions' }),
     ).toBeTruthy();
     expect(env.observer.observe).not.toHaveBeenCalled();
   },

@@ -60,7 +60,10 @@ to content. Sections fade in as they enter view and remain visible afterward.
 Reduced motion, unavailable animation APIs and keyboard focus keep content
 readable. The root entry requires JavaScript to complete the session/launch check.
 Previews use explicitly labelled fictional records and make no household reads.
-Get started opens `/sign-in`; existing members at that route return to `/`.
+Set up a household and Sign in open `/sign-in`. The landing page tells invitees
+to use their invitation link. The sign-in page explains how to create or join a
+household and shows a confirmation after signing out. Restored members at that
+route return to `/`.
 Reloads show the mascot and “Opening HouseMate…” until session restoration and launch detection finish. Signed-in visitors continue directly to their dashboard without a landing flash; signed-out Android Chrome/iPhone Safari Home Screen launches open sign-in. Signed-out ordinary browser visitors still see the landing. Invite/household links, pending
 invitations and sign-in callbacks retain the existing authentication/access flow.
 The landing supports the shared dark-mode toggle and responsive layouts. Its
